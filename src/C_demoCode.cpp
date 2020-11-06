@@ -8,6 +8,6 @@ extern "C" int hello(int i)
 int hello(int i)
 #endif
 {
-    cout << "Yallah";
+    cout << "Yo";
     return i*2;
 }
