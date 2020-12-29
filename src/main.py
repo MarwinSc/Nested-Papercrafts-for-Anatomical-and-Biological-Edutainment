@@ -233,10 +233,11 @@ class Ui_MainWindow(object):
         selectRegionButton = QtWidgets.QPushButton("Select Regions")
         selectRegionButton.clicked.connect(onRegionSelection)
 
-        cTest = QtWidgets.QPushButton("Test C Extension")
-        def onTestCExtension():
-            org.testCFile()
-        cTest.clicked.connect(onTestCExtension)
+        booleanButton = QtWidgets.QPushButton("Boolean")
+        def onBoolean():
+            #self.inflateStruc[]
+            org.boolean()
+        booleanButton.clicked.connect(onBoolean)
 
 #       Layout  --------------------------------------
         groupRight = QtWidgets.QGroupBox()
@@ -306,7 +307,8 @@ class Ui_MainWindow(object):
         debugBox_Layout = QtWidgets.QVBoxLayout()
         debugBox.setLayout(debugBox_Layout)
 
-        debugBox_Layout.addWidget(cTest)
+        debugBox_Layout.addWidget(booleanButton)
+
 
         layoutLeft.addWidget(debugBox)
 
@@ -323,13 +325,14 @@ class Ui_MainWindow(object):
 
         MainWindow.setCentralWidget(self.centralWidget)
 
-        def addMesh(name):
+        def addMesh(name,boolIsChild=False,layout=None):
 
             meshGroup = QtWidgets.QGroupBox()
             meshGroupLayout = QtWidgets.QVBoxLayout()
             meshGroup.setLayout(meshGroupLayout)
 
-            label = QtWidgets.QLabel(name[55:])
+            #TODO exchange with regex
+            label = QtWidgets.QLabel(name[-8:])
 
             colorBt = QtWidgets.QPushButton("Color")
 
@@ -340,6 +343,8 @@ class Ui_MainWindow(object):
             opacity = QtWidgets.QLineEdit("0.75")
 
             self.inflateStruc.append(True)
+
+            addMeshButton = QtWidgets.QPushButton("Add Mesh")
 
             def onOpacitySlider():
                 if self.isfloat(opacity.text()):
@@ -386,7 +391,33 @@ class Ui_MainWindow(object):
             meshGroupLayout.addWidget(inflate)
             meshGroupLayout.addWidget(clipping)
 
-            layoutRight.addWidget(meshGroup)
+            def onAddMesh():
+
+                dlg = QtWidgets.QFileDialog()
+                dlg.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
+
+                filename = os.path.join(self.dirname, "../Meshes")
+                dlg.setDirectory(filename)
+                # dlg.setFileMode(QtWidgets.QFileDialog.AnyFile)
+                # dlg.setFilter("*.stl")
+                filenames = []
+
+                if dlg.exec_():
+                    for i in dlg.selectedFiles():
+                        self.filenames.append(i)
+                        addMesh(i,boolIsChild=True,layout=meshGroupLayout)
+                        idx = self.filenames.index(i)
+                        org.addActor(i,True)
+
+                self.vtkWidget.GetRenderWindow().Render()
+
+            addMeshButton.clicked.connect(onAddMesh)
+            meshGroupLayout.addWidget(addMeshButton)
+
+            if(boolIsChild==False):
+                layoutRight.addWidget(meshGroup)
+            else:
+                layout.addWidget(meshGroup)
 
     def isfloat(self, value):
         try:

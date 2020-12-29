@@ -14,6 +14,8 @@ class Organizer():
     dirname = os.path.dirname(__file__)
 
     actorList = []
+    #TODO change when improving nested system
+    nestedList = []
     renList = []
 
     height = 2000
@@ -143,7 +145,7 @@ class Organizer():
     def changeOpacity(self, value, idx):
         self.actorList[idx].GetProperty().SetOpacity(value)
 
-    def addActor(self, name):
+    def addActor(self, name, boolNested=False):
         stlReader = vtk.vtkSTLReader()
         stlReader.SetFileName(name)# + ".stl")
 
@@ -154,7 +156,12 @@ class Organizer():
         actor.SetMapper(mapper)
         actor.GetProperty().SetColor(self.ctf.GetColor(0.0))
         actor.GetProperty().SetOpacity(0.75)
-        self.actorList.append(actor)
+        if not boolNested:
+            self.actorList.append(actor)
+        else:
+            #TODO real obj based system...
+            self.nestedList.append(actor)
+
         self.ren.AddActor(actor)
 
     def colorFilterImage(self,color):
@@ -179,14 +186,23 @@ class Organizer():
 
     def createPaperMeshPass(self):
         actor = self.meshProcessor.createPapermesh(self.actorList)
-        actor.GetProperty().SetOpacity(0.5)
-        self.ren.AddActor(actor)
+        #actor.GetProperty().SetOpacity(0.5)
+        #self.ren.AddActor(actor)
+        #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
+        #self.meshProcessor.createDedicatedMeshes(inflateStruc,self.actorList)
+
+        self.binder.onUnfold()
+
+        #actor = self.meshProcessor.importUnfoldedMesh()
+        #actor.GetProperty().SetOpacity(0.5)
+        #self.ren.AddActor(actor)
 
     def createDedicatedPaperMeshesPass(self,inflateStrucList):
         self.meshProcessor.createDedicatedMeshes(inflateStrucList,self.actorList)
 
     def importUnfoldedMeshPass(self, inflateStruc):
-        self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
+        #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
+
         actor = self.meshProcessor.importUnfoldedMesh()
         actor.GetProperty().SetOpacity(0.5)
         self.ren.AddActor(actor)
@@ -268,3 +284,6 @@ class Organizer():
 
     def testCFile(self):
         self.binder.init()
+
+    def boolean(self):
+        self.meshProcessor.booleanTrimesh(self.ren,self.binder,self.actorList,self.nestedList)

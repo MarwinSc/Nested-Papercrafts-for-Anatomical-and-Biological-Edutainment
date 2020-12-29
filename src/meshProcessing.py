@@ -4,6 +4,11 @@ import numpy as np
 import os
 import util
 import meshInteraction
+import sys
+import binder
+import trimesh
+#import pyvista
+
 
 #Class responsible for mesh related processing steps and I/O.
 class MeshProcessing():
@@ -16,7 +21,7 @@ class MeshProcessing():
     meshInteractor = meshInteraction.MeshInteraction(dedicatedPaperMeshes)
 
     # create initial Mesh to subdivide and wrap
-    def createPapermesh(self,actorList):
+    def createPapermesh(self,actorList,boolReturn = False):
 
         polysAppended = self.appendAllMeshes(actorList)
 
@@ -30,13 +35,17 @@ class MeshProcessing():
         triangleFilter.SetInputConnection(hull.GetOutputPort())
         triangleFilter.Update()
 
-        paperMesh = triangleFilter.GetOutput()
+        #paperMesh = triangleFilter.GetOutput()
 
         # for i in range(2):
-        temp = self.__createPaperMeshHelper(paperMesh, hull, False, actorList)
+        #temp = self.__createPaperMeshHelper(paperMesh, hull, False, actorList)
+
+        subdivider = vtk.vtkLinearSubdivisionFilter()
+        subdivider.SetNumberOfSubdivisions(1)
+        subdivider.SetInputConnection(triangleFilter.GetOutputPort())
 
         smoother = vtk.vtkSmoothPolyDataFilter()
-        smoother.SetInputConnection(0, temp.GetOutputPort())
+        smoother.SetInputConnection(0, subdivider.GetOutputPort())
         smoother.SetInputData(1, polysAppended)
         # smoother.SetNumberOfIterations(2)
         # smoother.SetRelaxationFactor(0.1)
@@ -60,19 +69,27 @@ class MeshProcessing():
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
 
-        ren, iren, renWin, wti = util.getbufferRenIntWin(vtk.vtkCamera(),2000,2000)
-        ren.AddActor(actor)
-        renWin.Render()
+        #ren, iren, renWin, wti = util.getbufferRenIntWin(vtk.vtkCamera(),2000,2000)
+        #ren.AddActor(actor)
+        #renWin.Render()
 
         # ----write for blender
-        objWriter = vtk.vtkOBJExporter()
+        #objWriter = vtk.vtkOBJExporter()
         # objWriter.SetRenderWindow(ren.GetRenderWindow())
-        objWriter.SetInput(renWin)
-        filename = os.path.join(self.dirname, "../out/3D/papermesh")
-        objWriter.SetFilePrefix(filename)
-        objWriter.Write()
+        #objWriter.SetInput(renWin)
 
-        self.tempPaperActor = actor
+        filename = os.path.join(self.dirname, "../out/3D/papermesh.stl")
+        #objWriter.SetFilePrefix(filename)
+        #objWriter.Write()
+
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName(filename)
+        stlWriter.SetInputData(actor.GetMapper().GetInput())
+        stlWriter.Write()
+
+        if not boolReturn:
+            self.tempPaperActor = actor
+
         return actor
 
     def appendAllMeshes(self, actorList):
@@ -101,13 +118,14 @@ class MeshProcessing():
 
         ##deprecated
         if isDedicatedMesh:
-            subdivider.SetNumberOfSubdivisions(2)
+            subdivider.SetNumberOfSubdivisions(1)
             subdivider.SetInputConnection(triangleFilter.GetOutputPort())
             smoother.SetInputConnection(0, subdivider.GetOutputPort())
             smoother.SetInputData(1, mesh)
         else:
-            subdivider.SetNumberOfSubdivisions(2)
+            subdivider.SetNumberOfSubdivisions(1)
             subdivider.SetInputConnection(triangleFilter.GetOutputPort())
+
             smoother.SetInputConnection(0, subdivider.GetOutputPort())
             smoother.SetInputData(1, self.appendAllMeshes(actorList))
 
@@ -170,37 +188,84 @@ class MeshProcessing():
             self.dedicatedPaperMeshes.append(actor)
 
 
-    def importUnfoldedMesh(self):
+    def importUnfoldedMesh(self, boolReturn = False):
 
         ren, iren, renWin, wti = util.getbufferRenIntWin()
 
-        importer = vtk.vtkOBJImporter()
-        filename = os.path.join(self.dirname, "../out/3D/unfolded/mesh.obj")
+
+        importer = vtk.vtkOBJReader()
+        #importer = vtk.vtkOBJImporter()
+
+        filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
+
+        #mesh = meshio.read(filename, "obj")
+        #meshio.write(filename, mesh)
+
+        filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
         importer.SetFileName(filename)
-        filename = os.path.join(self.dirname, "../out/3D/unfolded/mesh.mtl")
-        importer.SetFileNameMTL(filename)
-        filename = os.path.join(self.dirname, ".../out/3D/unfolded/")
-        importer.SetTexturePath(filename)
-        importer.SetRenderWindow(renWin)
+        #filename = os.path.join(self.dirname, "../out/3D/unfolded/mesh.mtl")
+        #importer.SetFileNameMTL(filename)
+        #filename = os.path.join(self.dirname, ".../out/3D/unfolded/")
+        #importer.SetTexturePath(filename)
+        #importer.SetRenderWindow(renWin)
+
         importer.Update()
+        mesh = importer.GetOutput()
 
-        actors = ren.GetActors()
-        actor = actors.GetLastActor()
+        textureCoordinates = mesh.GetPointData().GetTCoords()
+        absmax = 0.0
+        normmax = 0.0
+        newTCoords = vtk.vtkFloatArray()
+        newTCoords.SetNumberOfComponents(2)
 
-        transform = vtk.vtkTransform()
-        transform.RotateX(90.0)
-        rotate = vtk.vtkTransformFilter()
-        rotate.SetInputData(actor.GetMapper().GetInput())
-        rotate.SetTransform(transform)
-        rotate.Update()
+        for i in range(int(textureCoordinates.GetNumberOfTuples()/3)):
+            uvs = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+            textureCoordinates.GetTuple(mesh.GetCell(i).GetPointId(0), uvs[0])
+            textureCoordinates.GetTuple(mesh.GetCell(i).GetPointId(1), uvs[1])
+            textureCoordinates.GetTuple(mesh.GetCell(i).GetPointId(2), uvs[2])
+            abstemp=np.amax(abs(np.array(uvs)))
+            normtemp=np.amax((np.array(uvs)))
+            if abstemp > absmax: absmax = abstemp
+            if normtemp > normmax: normmax = normtemp
 
-        actor.GetMapper().SetInputConnection(rotate.GetOutputPort())
-        actor.Modified()
+        for i in range(int(textureCoordinates.GetNumberOfTuples()/3)):
+            u = (textureCoordinates.GetTuple2((mesh.GetCell(i).GetPointId(0)))[0]+absmax)/(absmax+normmax)
+            v = (textureCoordinates.GetTuple2((mesh.GetCell(i).GetPointId(0)))[1]+absmax)/(absmax+normmax)
+            newTCoords.InsertNextTuple2(u,v)
+
+            u = (textureCoordinates.GetTuple2((mesh.GetCell(i).GetPointId(1)))[0]+absmax)/(absmax+normmax)
+            v = (textureCoordinates.GetTuple2((mesh.GetCell(i).GetPointId(1)))[1]+absmax)/(absmax+normmax)
+            newTCoords.InsertNextTuple2(u,v)
+
+            u = (textureCoordinates.GetTuple2((mesh.GetCell(i).GetPointId(2)))[0]+absmax)/(absmax+normmax)
+            v = (textureCoordinates.GetTuple2((mesh.GetCell(i).GetPointId(2)))[1]+absmax)/(absmax+normmax)
+            newTCoords.InsertNextTuple2(u,v)
+
+        mesh.GetPointData().SetTCoords(newTCoords)
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(mesh)
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+
+        #actors = ren.GetActors()
+        #actor = actors.GetLastActor()
+
+        #transform = vtk.vtkTransform()
+        #transform.RotateX(90.0)
+        #rotate = vtk.vtkTransformFilter()
+        #rotate.SetInputData(actor.GetMapper().GetInput())
+        #rotate.SetTransform(transform)
+        #rotate.Update()
+
+        #actor.GetMapper().SetInputConnection(rotate.GetOutputPort())
+        #actor.Modified()
 
         actor.GetProperty().SetColor([0.5,0.5,0.5])
         actor.GetProperty().BackfaceCullingOn()
 
-        self.tempPaperActor = actor
+        if not boolReturn:
+            self.tempPaperActor = actor
         return actor
 
     def projectPerTriangle(self,inflateStruc,actorList):
@@ -671,3 +736,334 @@ class MeshProcessing():
         writer.SetFileName(filename)
         writer.SetInputConnection(castFilter.GetOutputPort())
         writer.Write()
+
+    def boolean(self,ren,binder,actorlist,nestedlist):
+
+        cubeactor = self.createPapermesh(nestedlist, True)
+        # binder.onUnfold()
+        # cubeactor = self.importUnfoldedMesh(True)
+
+        poly = self.tempPaperActor.GetMapper().GetInput()
+
+        clip = vtk.vtkClipPolyData()
+        clip.GenerateClipScalarsOn()
+        clip.GenerateClippedOutputOn()
+        clip.SetInputData(poly)
+
+        plane = vtk.vtkPlane()
+        plane.SetOrigin(cubeactor.GetMapper().GetInput().GetCenter())
+        plane.SetNormal(0.0, 0.0, 1.0)
+
+        clip.SetClipFunction(plane)
+        clip.SetValue(0)
+        clip.Update()
+
+        fillHoles = vtk.vtkFillHolesFilter()
+        fillHoles.SetInputData(clip.GetOutput())
+        fillHoles.SetHoleSize(10000.0)
+        fillHoles.Update()
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(fillHoles.GetOutput())
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+
+        # ----------------------
+        clip2 = vtk.vtkClipPolyData()
+        clip2.GenerateClipScalarsOn()
+        clip2.GenerateClippedOutputOn()
+        clip2.SetInputData(poly)
+
+        plane2 = vtk.vtkPlane()
+        plane2.SetOrigin(cubeactor.GetMapper().GetInput().GetCenter())
+        plane2.SetNormal(0.0, 0.0, -1.0)
+
+        clip2.SetClipFunction(plane2)
+        clip2.SetValue(0)
+        clip2.Update()
+
+        fillHoles2 = vtk.vtkFillHolesFilter()
+        fillHoles2.SetInputData(clip2.GetOutput())
+        fillHoles2.SetHoleSize(10000.0)
+        fillHoles2.Update()
+
+        mapper2 = vtk.vtkPolyDataMapper()
+        mapper2.SetInputData(fillHoles2.GetOutput())
+        actor2 = vtk.vtkActor()
+        actor2.SetMapper(mapper2)
+        # -------------------------------
+
+        filename = os.path.join(self.dirname, "../out/3D/boolMesh.stl")
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName(filename)
+        stlWriter.SetInputData(actor.GetMapper().GetInput())
+        stlWriter.Write()
+
+        filename = os.path.join(self.dirname, "../out/3D/boolMesh2.stl")
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName(filename)
+        stlWriter.SetInputData(actor2.GetMapper().GetInput())
+        stlWriter.Write()
+
+        filename = os.path.join(self.dirname, "../out/3D/cutout.stl")
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName(filename)
+        stlWriter.SetInputData(cubeactor.GetMapper().GetInput())
+        stlWriter.Write()
+
+        filename = os.path.join(self.dirname, "../out/3D/boolMesh.stl")
+        mesh_A = pyvista.read(filename)
+
+        filename = os.path.join(self.dirname, "../out/3D/boolMesh2.stl")
+        mesh_B = pyvista.read(filename)
+
+        filename = os.path.join(self.dirname, "../out/3D/cutout.stl")
+        cutout = pyvista.read(filename)
+
+        output_mesh_A = mesh_A.boolean_difference(cutout)
+        output_mesh_B = cutout.boolean_difference(mesh_B)
+
+        filename = os.path.join(self.dirname, "../out/3D/boolmesh_A.stl")
+        output_mesh_A.save(filename, output_mesh_A)
+        filename = os.path.join(self.dirname, "../out/3D/boolmesh_B.stl")
+        output_mesh_B.save(filename, output_mesh_B)
+
+        # ---------------------------
+
+    def booleanTrimesh(self,ren,binder,actorlist,nestedlist):
+
+        cubeactor = self.createPapermesh(nestedlist,True)
+        #binder.onUnfold()
+        #cubeactor = self.importUnfoldedMesh(True)
+
+        poly = self.tempPaperActor.GetMapper().GetInput()
+
+        clip = vtk.vtkClipPolyData()
+        clip.GenerateClipScalarsOn()
+        clip.GenerateClippedOutputOn()
+        clip.SetInputData(poly)
+
+        plane = vtk.vtkPlane()
+        plane.SetOrigin(cubeactor.GetMapper().GetInput().GetCenter())
+        plane.SetNormal(0.0, 0.0, 1.0)
+
+        clip.SetClipFunction(plane)
+        clip.SetValue(0)
+        clip.Update()
+
+        fillHoles = vtk.vtkFillHolesFilter()
+        fillHoles.SetInputData(clip.GetOutput())
+        fillHoles.SetHoleSize(10000.0)
+        fillHoles.Update()
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(fillHoles.GetOutput())
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+
+    #----------------------
+        clip2 = vtk.vtkClipPolyData()
+        clip2.GenerateClipScalarsOn()
+        clip2.GenerateClippedOutputOn()
+        clip2.SetInputData(poly)
+
+        plane2 = vtk.vtkPlane()
+        plane2.SetOrigin(cubeactor.GetMapper().GetInput().GetCenter())
+        plane2.SetNormal(0.0, 0.0, -1.0)
+
+        clip2.SetClipFunction(plane2)
+        clip2.SetValue(0)
+        clip2.Update()
+
+        fillHoles2 = vtk.vtkFillHolesFilter()
+        fillHoles2.SetInputData(clip2.GetOutput())
+        fillHoles2.SetHoleSize(10000.0)
+        fillHoles2.Update()
+
+        mapper2 = vtk.vtkPolyDataMapper()
+        mapper2.SetInputData(fillHoles2.GetOutput())
+        actor2 = vtk.vtkActor()
+        actor2.SetMapper(mapper2)
+    #-------------------------------
+
+        filename = os.path.join(self.dirname, "../out/3D/boolMesh.stl")
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName(filename)
+        stlWriter.SetInputData(actor.GetMapper().GetInput())
+        stlWriter.Write()
+
+        filename = os.path.join(self.dirname, "../out/3D/boolMesh2.stl")
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName(filename)
+        stlWriter.SetInputData(actor2.GetMapper().GetInput())
+        stlWriter.Write()
+
+        filename = os.path.join(self.dirname, "../out/3D/cutout.stl")
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName(filename)
+        stlWriter.SetInputData(cubeactor.GetMapper().GetInput())
+        stlWriter.Write()
+
+        filename = os.path.join(self.dirname, "../out/3D/boolMesh.stl")
+        mesh = trimesh.load(filename)
+
+        filename = os.path.join(self.dirname, "../out/3D/boolMesh2.stl")
+        mesh2 = trimesh.load(filename)
+
+        filename = os.path.join(self.dirname, "../out/3D/cutout.stl")
+        cutout = trimesh.load(filename)
+
+        print("imports working")
+
+        boolUpActor, boolDownActor = self.trimeshBooleanBugWorkaround(mesh,mesh2,cutout)
+
+        ren.RemoveAllViewProps()
+        ren.AddActor(boolUpActor)
+        ren.AddActor(boolDownActor)
+
+        return
+        #---------------------------
+#        filename = os.path.join(self.dirname, "../out/3D/cutout.stl")
+#
+#        reader3 = vtk.vtkSTLReader()
+#        reader3.SetFileName(filename)
+#        reader3.Update()
+#        mapper3 = vtk.vtkPolyDataMapper()
+#        mapper3.SetInputData(reader3.GetOutput())
+#        mapper3.Update()
+#        actor3 = vtk.vtkActor()
+#        actor3.SetMapper(mapper3)
+#
+#        ren.AddActor(actor3)
+
+#        return
+        #----------------------------
+
+        print("before")
+
+        filename = os.path.join(self.dirname, "../out/3D/papermesh.stl")
+        stlWriter2 = vtk.vtkSTLWriter()
+        stlWriter2.SetFileName(filename)
+        stlWriter2.SetInputData(actor.GetMapper().GetInput())
+        stlWriter2.Write()
+
+        print("wrote First Half")
+
+        binder.onUnfold()
+        actor = self.importUnfoldedMesh(True)
+        
+        print("unfolded first half")
+
+        filename = os.path.join(self.dirname, "../out/3D/papermesh2.stl")
+        stlWriter = vtk.vtkSTLWriter()
+        stlWriter.SetFileName(filename)
+        stlWriter.SetInputData(actor2.GetMapper().GetInput())
+        stlWriter.Write()
+
+        binder.onUnfold(name="2")
+        actor2 = self.importUnfoldedMesh(True)
+
+        self.dedicatedPaperMeshes.clear()
+        self.dedicatedPaperMeshes.append(actor)
+        self.dedicatedPaperMeshes.append(actor2)
+
+        actorList = [actor,actor2]
+
+        print("before projection")
+
+        self.projectPerTriangle(None,actorList)
+
+        print("after projection")
+
+        return
+
+    def trimeshBooleanBugWorkaround(self,mesh,mesh2,cutout):
+
+        volumeSum = 0
+        boolDownActor = vtk.vtkActor()
+        boolUpActor = vtk.vtkActor()
+
+        for i in range(20):
+            # ---------------------------
+
+            # meshes = [mesh,cutout]
+            # meshes = []
+            # meshes.append(mesh)
+            # meshes.append(cutout)
+            # boolMesh = trimesh.boolean.difference(meshes,engine='scad')
+            boolMesh = mesh.difference(cutout, engine='blender')
+
+            print("after first bool")
+
+            filename = os.path.join(self.dirname, "../out/3D/bool.stl")
+            boolMesh.export(filename)
+
+            reader = vtk.vtkSTLReader()
+            reader.SetFileName(filename)
+            reader.Update()
+
+            # -------------------
+
+            # meshes2 = [mesh2,cutout]
+            # meshes2 = []
+            # meshes2.append(mesh2)
+            # meshes2.append(cutout)
+            # boolMesh2 = trimesh.boolean.difference(meshes2,engine='blender')
+            boolMesh2 = mesh2.difference(cutout, engine='blender')
+
+            filename = os.path.join(self.dirname, "../out/3D/bool2.stl")
+            boolMesh2.export(filename)
+
+            reader2 = vtk.vtkSTLReader()
+            reader2.SetFileName(filename)
+            reader2.Update()
+
+            mass = vtk.vtkMassProperties()
+            mass.SetInputData(reader.GetOutput())
+            mass.Update()
+            volume = mass.GetVolume()
+
+            mass2 = vtk.vtkMassProperties()
+            mass2.SetInputData(reader2.GetOutput())
+            mass2.Update()
+            volume2 = mass2.GetVolume()
+
+            if volumeSum < (volume + volume2):
+
+                print(volumeSum)
+
+                volumeSum = (volume + volume2)
+
+                #-------------------
+
+                translation = vtk.vtkTransform()
+                translation.Translate(0.0, 0.0, 100.0)
+
+                transformFilter = vtk.vtkTransformFilter()
+                transformFilter.SetInputData(reader.GetOutput())
+                transformFilter.SetTransform(translation)
+                transformFilter.Update()
+                # boolUpActor.GetProperty().SetOpacity(0.5)
+
+                boolUpMapper = vtk.vtkPolyDataMapper()
+                boolUpMapper.SetInputData(transformFilter.GetOutput())
+                boolUpMapper.Update()
+                boolUpActor.SetMapper(boolUpMapper)
+
+                #--------------
+
+                translation2 = vtk.vtkTransform()
+                translation2.Translate(0.0, 0.0, -100.0)
+
+                transformFilter2 = vtk.vtkTransformFilter()
+                transformFilter2.SetInputData(reader2.GetOutput())
+                transformFilter2.SetTransform(translation2)
+                transformFilter2.Update()
+                # boolDownActor.GetProperty().SetOpacity(0.5)
+
+                boolDownMapper = vtk.vtkPolyDataMapper()
+                boolDownMapper.SetInputData(transformFilter2.GetOutput())
+                boolDownMapper.Update()
+                boolDownActor.SetMapper(boolDownMapper)
+
+        return boolUpActor,boolDownActor
