@@ -166,15 +166,15 @@ class Organizer():
             #TODO real obj based system...
             self.nestedList.append(actor)
 
-        self.hierarchical_mesh_anchor.add(actor, name[name.rfind('/')+1:])
+        self.hierarchical_mesh_anchor.add(actor, name)
 
         self.ren.AddActor(actor)
 
-    def drawLevel(self, level):
-        #self.ren.RemoveAllViewProps()
+    def draw_level(self, level):
         self.hierarchical_mesh_anchor.render(level, self.ren)
 
-        pass
+    def hierarchical_difference(self):
+        self.hierarchical_mesh_anchor.recursive_difference()
 
     def colorFilterImage(self,color):
         self.imageProcessor.canvas_source.SetDrawColor(color[0],color[1],color[2],255)

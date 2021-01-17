@@ -1,3 +1,6 @@
+import os
+import trimesh
+
 class HierarchicalMesh(object):
     """
     Represents a hierarchy of meshes. Tree structure.
@@ -5,17 +8,25 @@ class HierarchicalMesh(object):
     Each HierarchicalMesh is associated with a vtkActor.
     """
 
-    def __init__(self, parent, mesh, name):
+    def __init__(self, parent, mesh, filename):
         """
         Initialises a hierarchical mesh.
         :param self: this
         :param mesh: mesh associated with this
+        :param name: name of the mesh
         :return: None
         """
         self.mesh = mesh
         self.children = []
         self.parent = parent
-        self.name = name
+        if parent is None:
+            self.name = filename
+        else:
+            self.name = filename[filename.rfind('/')+1:]
+            print(self.name, "added to ", parent.name)
+
+        self.file = filename
+        self.dirname = os.path.dirname(__file__)
 
     def render(self, level, renderer):
         """
@@ -44,20 +55,21 @@ class HierarchicalMesh(object):
         :param mesh: mesh that is checked
         :return: True if the given mesh is inside this mesh
         """
-
+        # TODO: pretend to do something at least
         return True
 
-    def add(self, mesh, name):
+    def add(self, mesh, filename):
         """
         Adds the given mesh to the hierarchy
         :param mesh: Mesh that should be added to the hierarchy
+        :param name: Name of the mesh
         :return: None
         """
         # is the mesh inside any of the children?
         # if so add it to the first child we encounter
         for child in self.children:
             if child.inside(mesh):
-                child.add(mesh, name)
+                child.add(mesh, filename)
                 return
 
         # we only get here if it is not inside any of the children
@@ -67,5 +79,23 @@ class HierarchicalMesh(object):
         if not self.inside(mesh):
             raise RuntimeError('Mesh is outside of this mesh..')
 
-        print(name, "added to ", self.name)
-        self.children.append(HierarchicalMesh(self, mesh, name))
+        self.children.append(HierarchicalMesh(self, mesh, filename))
+
+    def recursive_difference(self):
+        """
+        "Cuts" out children of this mesh from this mesh.
+        Recursively "cuts" out children of children of children of children ...
+        :return: None
+        """
+        if self.mesh is not None:
+            final_mesh = trimesh.load(self.file)
+            for child in self.children:
+                tri_child = trimesh.load(child.file)
+                final_mesh = final_mesh.difference(tri_child, engine='blender')
+
+            filename = os.path.join(self.dirname, "../out/3D/differenced_" + self.name)
+            final_mesh.export(filename)
+
+        # if all children are cut out save it and call boolean for children
+        for child in self.children:
+            child.recursive_difference()

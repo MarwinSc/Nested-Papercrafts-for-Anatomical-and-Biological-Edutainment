@@ -244,9 +244,17 @@ class Ui_MainWindow(object):
         hierarchySlider.setRange(1, 4)
 
         def onHierarchySlider(value):
-            org.drawLevel(value)
+            org.draw_level(value)
+            self.vtkWidget.GetRenderWindow().Render()
 
         hierarchySlider.valueChanged.connect(onHierarchySlider)
+
+        hierarchical_difference_button = QtWidgets.QPushButton("Hierarchial Difference")
+
+        def on_hierarchical_difference():
+            org.hierarchical_difference()
+
+        hierarchical_difference_button.clicked.connect(on_hierarchical_difference)
 
         testButton = QtWidgets.QPushButton("TestUnfold")
         def onUnfoldTest():
@@ -323,6 +331,7 @@ class Ui_MainWindow(object):
 
         debugBox_Layout.addWidget(booleanButton)
         debugBox_Layout.addWidget(hierarchySlider)
+        debugBox_Layout.addWidget(hierarchical_difference_button)
         debugBox_Layout.addWidget(testButton)
 
 
