@@ -1,6 +1,6 @@
 import vtkmodules.all as vtk
 import sys
-from PyQt5 import QtGui, QtWidgets
+from PyQt5 import QtGui, QtWidgets, QtCore
 import organizer
 import os
 
@@ -234,10 +234,19 @@ class Ui_MainWindow(object):
         selectRegionButton.clicked.connect(onRegionSelection)
 
         booleanButton = QtWidgets.QPushButton("Boolean")
+
         def onBoolean():
             #self.inflateStruc[]
             org.boolean()
         booleanButton.clicked.connect(onBoolean)
+
+        hierarchySlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        hierarchySlider.setRange(1, 4)
+
+        def onHierarchySlider(value):
+            org.drawLevel(value)
+
+        hierarchySlider.valueChanged.connect(onHierarchySlider)
 
         testButton = QtWidgets.QPushButton("TestUnfold")
         def onUnfoldTest():
@@ -313,6 +322,7 @@ class Ui_MainWindow(object):
         debugBox.setLayout(debugBox_Layout)
 
         debugBox_Layout.addWidget(booleanButton)
+        debugBox_Layout.addWidget(hierarchySlider)
         debugBox_Layout.addWidget(testButton)
 
 

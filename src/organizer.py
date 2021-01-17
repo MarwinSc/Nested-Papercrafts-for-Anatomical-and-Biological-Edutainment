@@ -14,7 +14,7 @@ class Organizer():
     def __init__(self,ren):
         self.ren = ren
         # todo move this somewhere meaningful
-        self.hierarchical_mesh_anchor = HierarchicalMesh(None, None)
+        self.hierarchical_mesh_anchor = HierarchicalMesh(None, None, "Empty")
 
     dirname = os.path.dirname(__file__)
 
@@ -166,9 +166,15 @@ class Organizer():
             #TODO real obj based system...
             self.nestedList.append(actor)
 
-        self.hierarchical_mesh_anchor.add(actor)
+        self.hierarchical_mesh_anchor.add(actor, name[name.rfind('/')+1:])
 
         self.ren.AddActor(actor)
+
+    def drawLevel(self, level):
+        #self.ren.RemoveAllViewProps()
+        self.hierarchical_mesh_anchor.render(level, self.ren)
+
+        pass
 
     def colorFilterImage(self,color):
         self.imageProcessor.canvas_source.SetDrawColor(color[0],color[1],color[2],255)

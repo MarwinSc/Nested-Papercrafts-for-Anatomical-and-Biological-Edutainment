@@ -1,6 +1,3 @@
-import vtkmodules.all as vtk
-
-
 class HierarchicalMesh(object):
     """
     Represents a hierarchy of meshes. Tree structure.
@@ -8,7 +5,7 @@ class HierarchicalMesh(object):
     Each HierarchicalMesh is associated with a vtkActor.
     """
 
-    def __init__(self, parent, mesh):
+    def __init__(self, parent, mesh, name):
         """
         Initialises a hierarchical mesh.
         :param self: this
@@ -18,6 +15,28 @@ class HierarchicalMesh(object):
         self.mesh = mesh
         self.children = []
         self.parent = parent
+        self.name = name
+
+    def render(self, level, renderer):
+        """
+        Adds actors to the given renderer based on the level.
+        :param level:
+        :param renderer:
+        :return:
+        """
+        if level == 0:
+            if self.mesh is not None:
+                # renderer.AddActor(self.mesh)
+                self.mesh.SetVisibility(True)
+
+            for child in self.children:
+                child.render(level, renderer)
+        else:
+            if self.mesh is not None:
+                self.mesh.SetVisibility(False)
+
+            for child in self.children:
+                child.render(level-1, renderer)
 
     def inside(self, mesh):
         """
@@ -28,7 +47,7 @@ class HierarchicalMesh(object):
 
         return True
 
-    def add(self, mesh):
+    def add(self, mesh, name):
         """
         Adds the given mesh to the hierarchy
         :param mesh: Mesh that should be added to the hierarchy
@@ -37,8 +56,8 @@ class HierarchicalMesh(object):
         # is the mesh inside any of the children?
         # if so add it to the first child we encounter
         for child in self.children:
-            if child.self.inside(mesh):
-                child.add(mesh)
+            if child.inside(mesh):
+                child.add(mesh, name)
                 return
 
         # we only get here if it is not inside any of the children
@@ -48,4 +67,5 @@ class HierarchicalMesh(object):
         if not self.inside(mesh):
             raise RuntimeError('Mesh is outside of this mesh..')
 
-        self.children.append(HierarchicalMesh(self, mesh))
+        print(name, "added to ", self.name)
+        self.children.append(HierarchicalMesh(self, mesh, name))
