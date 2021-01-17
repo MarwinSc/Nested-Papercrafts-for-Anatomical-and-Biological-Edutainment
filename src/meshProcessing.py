@@ -4,13 +4,9 @@ import numpy as np
 import os
 import util
 import meshInteraction
-import sys
-import binder
 import trimesh
 import meshio
-#import pyvista
-from mu3d import Graph
-
+from mu3d.mu3dpy.mu3d import Graph
 
 #Class responsible for mesh related processing steps and I/O.
 class MeshProcessing():

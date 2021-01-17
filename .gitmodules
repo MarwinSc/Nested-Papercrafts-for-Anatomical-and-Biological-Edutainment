@@ -1,0 +1,3 @@
+[submodule "mu3d"]
+	path = mu3d
+	url = https://github.com/AnimaNoProject/mu3d

@@ -3,8 +3,7 @@ import numpy as np
 import os
 import meshProcessing
 import imageProcessing
-import binder
-from mu3d import Graph
+from mu3d.mu3dpy.mu3d import Graph
 
 # Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
 class Organizer():
