@@ -4,6 +4,7 @@ import os
 import meshProcessing
 import imageProcessing
 import binder
+from mu3d import Graph
 
 # Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
 class Organizer():
@@ -23,7 +24,6 @@ class Organizer():
 
     meshProcessor = meshProcessing.MeshProcessing()
     imageProcessor = imageProcessing.ImageProcessor(height,width)
-    binder = binder.Binder()
 
     camera = vtk.vtkCamera()
 
@@ -185,14 +185,12 @@ class Organizer():
             self.resultRen.SetViewport(self.noViewport)
 
     def createPaperMeshPass(self):
-        actor = self.meshProcessor.createPapermesh(self.actorList)
+        mainGraph = Graph()
+        actor = self.meshProcessor.createPapermesh(self.actorList, mainGraph)
         #actor.GetProperty().SetOpacity(0.5)
         #self.ren.AddActor(actor)
         #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
         #self.meshProcessor.createDedicatedMeshes(inflateStruc,self.actorList)
-
-        self.binder.onUnfold()
-
         #actor = self.meshProcessor.importUnfoldedMesh()
         #actor.GetProperty().SetOpacity(0.5)
         #self.ren.AddActor(actor)
@@ -204,6 +202,7 @@ class Organizer():
         #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
 
         actor = self.meshProcessor.importUnfoldedMesh()
+        print("yo import geht")
         actor.GetProperty().SetOpacity(0.5)
         self.ren.AddActor(actor)
         self.meshProcessor.createDedicatedMeshes(inflateStruc,self.actorList)
@@ -282,8 +281,10 @@ class Organizer():
             self.renderers[renId].RemoveActor(self.renderers[renId].GetActors().GetLastActor())
         self.renderers[renId].AddActor(actor)
 
-    def testCFile(self):
-        self.binder.init()
-
     def boolean(self):
-        self.meshProcessor.booleanTrimesh(self.ren,self.binder,self.actorList,self.nestedList)
+        boolGraph = Graph()
+        self.meshProcessor.booleanTrimesh(self.ren,boolGraph,self.actorList,self.nestedList)
+
+    def onUnfoldTest(self):
+        print("NOT IMPLEMENTED")
+        #self.binder.unfoldTest()

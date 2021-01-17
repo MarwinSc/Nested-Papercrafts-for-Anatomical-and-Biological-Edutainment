@@ -7,7 +7,9 @@ import meshInteraction
 import sys
 import binder
 import trimesh
+import meshio
 #import pyvista
+from mu3d import Graph
 
 
 #Class responsible for mesh related processing steps and I/O.
@@ -21,7 +23,7 @@ class MeshProcessing():
     meshInteractor = meshInteraction.MeshInteraction(dedicatedPaperMeshes)
 
     # create initial Mesh to subdivide and wrap
-    def createPapermesh(self,actorList,boolReturn = False):
+    def createPapermesh(self,actorList, graph, boolReturn = False):
 
         polysAppended = self.appendAllMeshes(actorList)
 
@@ -86,6 +88,29 @@ class MeshProcessing():
         stlWriter.SetFileName(filename)
         stlWriter.SetInputData(actor.GetMapper().GetInput())
         stlWriter.Write()
+
+        mesh = meshio.read(
+            filename,  # string, os.PathLike, or a buffer/open file
+            file_format="stl",  # optional if filename is a path; inferred from extension
+        )
+
+        filename = os.path.join(self.dirname, "../out/3D/papermesh.off")
+
+        meshio.write(
+            filename,  # str, os.PathLike, or buffer/ open file
+            mesh,
+            # file_format="vtk",  # optional if first argument is a path; inferred from extension
+        )
+
+        graph.load(filename)
+        if not graph.unfold(5000, 0):
+            print("failed to unfold :(")
+        else:
+            print("succesfully unfolded :)")
+            filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
+            gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
+
+            graph.save(filename, gluetabs_filename)
 
         if not boolReturn:
             self.tempPaperActor = actor
@@ -190,16 +215,17 @@ class MeshProcessing():
 
     def importUnfoldedMesh(self, boolReturn = False):
 
-        ren, iren, renWin, wti = util.getbufferRenIntWin()
-
+        #ren, iren, renWin, wti = util.getbufferRenIntWin()
 
         importer = vtk.vtkOBJReader()
         #importer = vtk.vtkOBJImporter()
 
-        filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
+        #filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
 
         #mesh = meshio.read(filename, "obj")
         #meshio.write(filename, mesh)
+
+        print("import geht nicht")
 
         filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
         importer.SetFileName(filename)
@@ -209,14 +235,20 @@ class MeshProcessing():
         #importer.SetTexturePath(filename)
         #importer.SetRenderWindow(renWin)
 
+        print("was will er eig")
+
         importer.Update()
         mesh = importer.GetOutput()
+
+        print("import geht")
 
         textureCoordinates = mesh.GetPointData().GetTCoords()
         absmax = 0.0
         normmax = 0.0
         newTCoords = vtk.vtkFloatArray()
         newTCoords.SetNumberOfComponents(2)
+
+        print("get tcoords geht")
 
         for i in range(int(textureCoordinates.GetNumberOfTuples()/3)):
             uvs = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
@@ -227,6 +259,8 @@ class MeshProcessing():
             normtemp=np.amax((np.array(uvs)))
             if abstemp > absmax: absmax = abstemp
             if normtemp > normmax: normmax = normtemp
+
+        print("1 for loop geht")
 
         for i in range(int(textureCoordinates.GetNumberOfTuples()/3)):
             u = (textureCoordinates.GetTuple2((mesh.GetCell(i).GetPointId(0)))[0]+absmax)/(absmax+normmax)
@@ -242,6 +276,8 @@ class MeshProcessing():
             newTCoords.InsertNextTuple2(u,v)
 
         mesh.GetPointData().SetTCoords(newTCoords)
+
+        print("TCoords gehen")
 
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(mesh)
@@ -268,6 +304,7 @@ class MeshProcessing():
             self.tempPaperActor = actor
         return actor
 
+    #Enormous rendering method that just produces a long texture image, of concatenated renderings of the triangles from the papermesh.
     def projectPerTriangle(self,inflateStruc,actorList):
         meshNr = 0
 
@@ -367,26 +404,33 @@ class MeshProcessing():
             lengths = []
             img = np.array([[],[],[]])
 
+            print("zeile 370")
+
             for i in range(centersFilter.GetOutput().GetNumberOfPoints()):
                 p = [0.0, 0.0, 0.0]
                 centersFilter.GetOutput().GetPoint(i, p)
+
+                print("zeile 376")
 
                 p2 = normalDataDouble.GetTuple3(i)
 
                 position = [p[0] + (p2[0] * -5), p[1] + (p2[1] * -5), p[2] + (p2[2] * -5)]
 
                 # p2 = [p[0] + (p2[0]*10), p[1] + (p2[1]*10), p[2] + (p2[2]*10)]
+                print("zeile 383")
 
                 camera.SetPosition(position)
                 camera.SetFocalPoint(p)
                 #            camera.OrthogonalizeViewUp()
 
                 points = paper.GetCell(i).GetPoints()
+                print("zeile 390")
 
                 uvs = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
                 textureCoordinates.GetTuple(paper.GetCell(i).GetPointId(0), uvs[0])
                 textureCoordinates.GetTuple(paper.GetCell(i).GetPointId(1), uvs[1])
                 textureCoordinates.GetTuple(paper.GetCell(i).GetPointId(2), uvs[2])
+                print("zeile 394")
 
                 uvs = np.array(uvs)
                 uvs = list(zip(uvs[:, 1], uvs[:, 0]))
@@ -405,6 +449,8 @@ class MeshProcessing():
 
                 pointActor = vtk.vtkActor()
                 bufferPoints.RemoveAllViewProps()
+
+                print("zeile 410")
 
                 if True:
                     colors = vtk.vtkNamedColors()
@@ -448,8 +494,13 @@ class MeshProcessing():
                     pointActor.GetProperty().SetPointSize(2)
                     bufferPoints.AddActor(pointActor)
 
+                print("zeile 455")
+
+
                 # render frame
                 triangle = self.renderHelper(camera, buffer, bufferPaper, bufferPoints, bufferWin, i, actorList[meshNr])
+
+                print("zeile 456")
 
                 blue = triangle[:, :, 2]
                 red = triangle[:, :, 0]
@@ -540,7 +591,11 @@ class MeshProcessing():
 
             self.dedicatedPaperMeshes[meshNr] = actor
 
+            print("rendern geht")
+
             self.createUnfoldedPaperMesh(meshNr)
+
+            print("unfold geht")
 
             meshNr += 1
 
@@ -567,8 +622,9 @@ class MeshProcessing():
         img = numpy_support.vtk_to_numpy(image.GetPointData().GetScalars())[:, 0:3]
 
         img.astype(float)
-
+        print(img.shape)
         img = np.reshape(np.ravel(img), (500, 500, 3))
+
 
         blue = img[:,:,2]
         red = img[:,:,0]
@@ -682,36 +738,32 @@ class MeshProcessing():
         camera.SetPosition(0,-600,0)
         camera.SetFocalPoint(0,0,0)
         camera.SetViewUp(0,0,1)
-        ren, iren, renWin, wti = util.getbufferRenIntWin(camera)
-        renWin.SetSize(3000,3000)
+        ren, iren, renWin, wti = util.getbufferRenIntWin(camera,width=3000,height=3000)
+        #print(wti.GetViewport())
 
         self.printSinglePoint(widthMarker[0],heightMarker[0],ren,[0.0,0.0,255.0])
         self.printSinglePoint(widthMarker[1],heightMarker[1],ren,[0.0,255.0,0.0])
 
-
         ren.AddActor(actor)
         renWin.Render()
 
-        castFilter = vtk.vtkImageCast()
-        castFilter.SetInputConnection(wti.GetOutputPort())
-        castFilter.SetOutputScalarTypeToUnsignedChar()
-        castFilter.Update()
+        print("zeile 725")
 
-        imgVtk = castFilter.GetOutput()
+        wti.Update()
 
-        img = numpy_support.vtk_to_numpy(imgVtk.GetPointData().GetScalars())[:, 0:3]
+        print()
+        imgWidth = wti.GetOutput().GetExtent()[1] + 1
+        imgHeight = wti.GetOutput().GetExtent()[3] + 1
+        print(imgWidth, " ", imgHeight)
 
-        img.astype(float)
+        img = self.vtkToNpHelper(wti.GetOutput(), imgWidth, imgHeight)
 
-        img = np.reshape(np.ravel(img), (3000, 3000, 3))
+        #castFilter = vtk.vtkImageCast()
+        #castFilter.SetInputConnection(wti.GetOutputPort())
+        #castFilter.SetOutputScalarTypeToUnsignedChar()
+        #castFilter.Update()
 
-        mask = np.where(img != 255)
-        width = mask[0].max() - mask[0].min()
-        height = mask[1].max() - mask[1].min()
-        if width > height:
-            img = img[mask[0].min():mask[0].max(), mask[1].min(): mask[1].min() + width, :]
-        else:
-            img = img[mask[0].min():mask[0].min() + height, mask[1].min(): mask[1].max(), :]
+        print("zeile 752")
 
         resultImg = vtk.vtkImageData()
 
@@ -725,10 +777,14 @@ class MeshProcessing():
         resultImg.AllocateScalars(numpy_support.get_vtk_array_type(img.dtype), dz)
         resultImg.GetPointData().SetScalars(vtkResult)
 
+        print("zeile 766")
+
         castFilter = vtk.vtkImageCast()
         castFilter.SetInputData(resultImg)
         castFilter.SetOutputScalarTypeToUnsignedChar()
         castFilter.Update()
+
+        print("zeile 773")
 
         writer = vtk.vtkPNGWriter()
         filename = os.path.join(self.dirname, "../out/2D/unfolding{}.png".format(idx))
@@ -737,102 +793,32 @@ class MeshProcessing():
         writer.SetInputConnection(castFilter.GetOutputPort())
         writer.Write()
 
-    def boolean(self,ren,binder,actorlist,nestedlist):
+    def vtkToNpHelper(self, img, width, height):
 
-        cubeactor = self.createPapermesh(nestedlist, True)
-        # binder.onUnfold()
-        # cubeactor = self.importUnfoldedMesh(True)
+        img = numpy_support.vtk_to_numpy(img.GetPointData().GetScalars())[:, 0:3]
+        print(img.shape)
+        img.astype(float)
 
-        poly = self.tempPaperActor.GetMapper().GetInput()
+        print("zeile 740")
 
-        clip = vtk.vtkClipPolyData()
-        clip.GenerateClipScalarsOn()
-        clip.GenerateClippedOutputOn()
-        clip.SetInputData(poly)
+        print(img.shape)
+        img = np.reshape(np.ravel(img), (width, height, 3))
 
-        plane = vtk.vtkPlane()
-        plane.SetOrigin(cubeactor.GetMapper().GetInput().GetCenter())
-        plane.SetNormal(0.0, 0.0, 1.0)
+        print("zeile 742")
 
-        clip.SetClipFunction(plane)
-        clip.SetValue(0)
-        clip.Update()
+        mask = np.where(img != 255)
+        width = mask[0].max() - mask[0].min()
+        height = mask[1].max() - mask[1].min()
+        if width > height:
+            img = img[mask[0].min():mask[0].max(), mask[1].min(): mask[1].min() + width, :]
+        else:
+            img = img[mask[0].min():mask[0].min() + height, mask[1].min(): mask[1].max(), :]
 
-        fillHoles = vtk.vtkFillHolesFilter()
-        fillHoles.SetInputData(clip.GetOutput())
-        fillHoles.SetHoleSize(10000.0)
-        fillHoles.Update()
+        return img
 
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputData(fillHoles.GetOutput())
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
+    def booleanTrimesh(self,ren,graph,actorlist,nestedlist):
 
-        # ----------------------
-        clip2 = vtk.vtkClipPolyData()
-        clip2.GenerateClipScalarsOn()
-        clip2.GenerateClippedOutputOn()
-        clip2.SetInputData(poly)
-
-        plane2 = vtk.vtkPlane()
-        plane2.SetOrigin(cubeactor.GetMapper().GetInput().GetCenter())
-        plane2.SetNormal(0.0, 0.0, -1.0)
-
-        clip2.SetClipFunction(plane2)
-        clip2.SetValue(0)
-        clip2.Update()
-
-        fillHoles2 = vtk.vtkFillHolesFilter()
-        fillHoles2.SetInputData(clip2.GetOutput())
-        fillHoles2.SetHoleSize(10000.0)
-        fillHoles2.Update()
-
-        mapper2 = vtk.vtkPolyDataMapper()
-        mapper2.SetInputData(fillHoles2.GetOutput())
-        actor2 = vtk.vtkActor()
-        actor2.SetMapper(mapper2)
-        # -------------------------------
-
-        filename = os.path.join(self.dirname, "../out/3D/boolMesh.stl")
-        stlWriter = vtk.vtkSTLWriter()
-        stlWriter.SetFileName(filename)
-        stlWriter.SetInputData(actor.GetMapper().GetInput())
-        stlWriter.Write()
-
-        filename = os.path.join(self.dirname, "../out/3D/boolMesh2.stl")
-        stlWriter = vtk.vtkSTLWriter()
-        stlWriter.SetFileName(filename)
-        stlWriter.SetInputData(actor2.GetMapper().GetInput())
-        stlWriter.Write()
-
-        filename = os.path.join(self.dirname, "../out/3D/cutout.stl")
-        stlWriter = vtk.vtkSTLWriter()
-        stlWriter.SetFileName(filename)
-        stlWriter.SetInputData(cubeactor.GetMapper().GetInput())
-        stlWriter.Write()
-
-        filename = os.path.join(self.dirname, "../out/3D/boolMesh.stl")
-        mesh_A = pyvista.read(filename)
-
-        filename = os.path.join(self.dirname, "../out/3D/boolMesh2.stl")
-        mesh_B = pyvista.read(filename)
-
-        filename = os.path.join(self.dirname, "../out/3D/cutout.stl")
-        cutout = pyvista.read(filename)
-
-        output_mesh_A = mesh_A.boolean_difference(cutout)
-        output_mesh_B = cutout.boolean_difference(mesh_B)
-
-        filename = os.path.join(self.dirname, "../out/3D/boolmesh_A.stl")
-        output_mesh_A.save(filename, output_mesh_A)
-        filename = os.path.join(self.dirname, "../out/3D/boolmesh_B.stl")
-        output_mesh_B.save(filename, output_mesh_B)
-
-        # ---------------------------
-
-    def booleanTrimesh(self,ren,binder,actorlist,nestedlist):
-
-        cubeactor = self.createPapermesh(nestedlist,True)
+        cubeactor = self.createPapermesh(nestedlist,graph,True)
         #binder.onUnfold()
         #cubeactor = self.importUnfoldedMesh(True)
 
@@ -917,65 +903,66 @@ class MeshProcessing():
 
         boolUpActor, boolDownActor = self.trimeshBooleanBugWorkaround(mesh,mesh2,cutout)
 
+        writer = vtk.vtkSTLWriter()
+        writer.SetInputData(boolUpActor.GetMapper().GetInput())
+        filename = os.path.join(self.dirname, "../out/3D/upper.stl")
+        writer.SetFileName(filename)
+        writer.Write()
+#
+#        binder.onUnfold()
+#        unfoldedUpActor = self.importUnfoldedMesh(True)
+#
+#        print("unfolded the Upper Actor")
+#
+        writer = vtk.vtkSTLWriter()
+        writer.SetInputData(boolDownActor.GetMapper().GetInput())
+        filename = os.path.join(self.dirname, "../out/3D/lower.stl")
+        writer.SetFileName(filename)
+        writer.Write()
+#
+#        binder.onUnfold()
+#        unfoldedDownActor = self.importUnfoldedMesh(True)
+#
+#        print("unfolded the Lower Actor")
+
+        self.unfoldTest()
+
+        self.dedicatedPaperMeshes = [boolUpActor,boolDownActor]
+
         ren.RemoveAllViewProps()
         ren.AddActor(boolUpActor)
         ren.AddActor(boolDownActor)
 
-        return
-        #---------------------------
-#        filename = os.path.join(self.dirname, "../out/3D/cutout.stl")
-#
-#        reader3 = vtk.vtkSTLReader()
-#        reader3.SetFileName(filename)
-#        reader3.Update()
-#        mapper3 = vtk.vtkPolyDataMapper()
-#        mapper3.SetInputData(reader3.GetOutput())
-#        mapper3.Update()
-#        actor3 = vtk.vtkActor()
-#        actor3.SetMapper(mapper3)
-#
-#        ren.AddActor(actor3)
+    def unfoldTest(self):
 
-#        return
-        #----------------------------
+        filename = os.path.join(self.dirname, "../out/3D/upper.stl")
+        #        filename = os.path.join(self.dirname, "../out/3D/papermesh_cleaned.off")
 
-        print("before")
+        mesh = meshio.read(
+            filename,  # string, os.PathLike, or a buffer/open file
+            file_format="stl",  # optional if filename is a path; inferred from extension
+        )
 
-        filename = os.path.join(self.dirname, "../out/3D/papermesh.stl")
-        stlWriter2 = vtk.vtkSTLWriter()
-        stlWriter2.SetFileName(filename)
-        stlWriter2.SetInputData(actor.GetMapper().GetInput())
-        stlWriter2.Write()
+        filename = os.path.join(self.dirname, "../out/3D/papermesh.off")
 
-        print("wrote First Half")
+        meshio.write(
+            filename,  # str, os.PathLike, or buffer/ open file
+            mesh,
+            # file_format="vtk",  # optional if first argument is a path; inferred from extension
+        )
 
-        binder.onUnfold()
-        actor = self.importUnfoldedMesh(True)
-        
-        print("unfolded first half")
+        #       print(filename)
+        graph = Graph()
 
-        filename = os.path.join(self.dirname, "../out/3D/papermesh2.stl")
-        stlWriter = vtk.vtkSTLWriter()
-        stlWriter.SetFileName(filename)
-        stlWriter.SetInputData(actor2.GetMapper().GetInput())
-        stlWriter.Write()
+        graph.load(filename)
+        if not graph.unfold(5000, 0):
+            print("failed to unfold :(")
+        else:
+            print("succesfully unfolded :)")
+            filename = os.path.join(self.dirname, "../out/3D/unfolded/upper.obj")
+            gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_upper.obj")
 
-        binder.onUnfold(name="2")
-        actor2 = self.importUnfoldedMesh(True)
-
-        self.dedicatedPaperMeshes.clear()
-        self.dedicatedPaperMeshes.append(actor)
-        self.dedicatedPaperMeshes.append(actor2)
-
-        actorList = [actor,actor2]
-
-        print("before projection")
-
-        self.projectPerTriangle(None,actorList)
-
-        print("after projection")
-
-        return
+            graph.save(filename, gluetabs_filename)
 
     def trimeshBooleanBugWorkaround(self,mesh,mesh2,cutout):
 
@@ -983,7 +970,7 @@ class MeshProcessing():
         boolDownActor = vtk.vtkActor()
         boolUpActor = vtk.vtkActor()
 
-        for i in range(20):
+        for i in range(10):
             # ---------------------------
 
             # meshes = [mesh,cutout]
@@ -1036,33 +1023,41 @@ class MeshProcessing():
 
                 #-------------------
 
-                translation = vtk.vtkTransform()
-                translation.Translate(0.0, 0.0, 100.0)
+                #translation = vtk.vtkTransform()
+                #translation.Translate(0.0, 0.0, 100.0)
 
-                transformFilter = vtk.vtkTransformFilter()
-                transformFilter.SetInputData(reader.GetOutput())
-                transformFilter.SetTransform(translation)
-                transformFilter.Update()
+                #transformFilter = vtk.vtkTransformFilter()
+                #transformFilter.SetInputData(reader.GetOutput())
+                #transformFilter.SetTransform(translation)
+                #transformFilter.Update()
                 # boolUpActor.GetProperty().SetOpacity(0.5)
 
+                triangle = vtk.vtkTriangleFilter()
+                triangle.SetInputData(reader.GetOutput())
+                triangle.Update()
+
                 boolUpMapper = vtk.vtkPolyDataMapper()
-                boolUpMapper.SetInputData(transformFilter.GetOutput())
+                boolUpMapper.SetInputData(triangle.GetOutput())
                 boolUpMapper.Update()
                 boolUpActor.SetMapper(boolUpMapper)
 
                 #--------------
 
-                translation2 = vtk.vtkTransform()
-                translation2.Translate(0.0, 0.0, -100.0)
+                #translation2 = vtk.vtkTransform()
+                #translation2.Translate(0.0, 0.0, -100.0)
 
-                transformFilter2 = vtk.vtkTransformFilter()
-                transformFilter2.SetInputData(reader2.GetOutput())
-                transformFilter2.SetTransform(translation2)
-                transformFilter2.Update()
+                #transformFilter2 = vtk.vtkTransformFilter()
+                #transformFilter2.SetInputData(reader2.GetOutput())
+                #transformFilter2.SetTransform(translation2)
+                #transformFilter2.Update()
                 # boolDownActor.GetProperty().SetOpacity(0.5)
 
+                triangle2 = vtk.vtkTriangleFilter()
+                triangle2.SetInputData(reader2.GetOutput())
+                triangle2.Update()
+
                 boolDownMapper = vtk.vtkPolyDataMapper()
-                boolDownMapper.SetInputData(transformFilter2.GetOutput())
+                boolDownMapper.SetInputData(triangle2.GetOutput())
                 boolDownMapper.Update()
                 boolDownActor.SetMapper(boolDownMapper)
 

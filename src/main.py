@@ -239,6 +239,11 @@ class Ui_MainWindow(object):
             org.boolean()
         booleanButton.clicked.connect(onBoolean)
 
+        testButton = QtWidgets.QPushButton("TestUnfold")
+        def onUnfoldTest():
+            org.onUnfoldTest()
+        testButton.clicked.connect(onUnfoldTest)
+
 #       Layout  --------------------------------------
         groupRight = QtWidgets.QGroupBox()
         layoutRight = QtWidgets.QVBoxLayout()
@@ -308,6 +313,7 @@ class Ui_MainWindow(object):
         debugBox.setLayout(debugBox_Layout)
 
         debugBox_Layout.addWidget(booleanButton)
+        debugBox_Layout.addWidget(testButton)
 
 
         layoutLeft.addWidget(debugBox)
@@ -492,10 +498,28 @@ def UpdateColorFilter(caller, ev):
 
 if __name__ == '__main__':
 
-    app = QtWidgets.QApplication(sys.argv)
-    window = SimpleView()
-    window.show()
-    window.iren.Initialize()
-    sys.exit(app.exec_())
+    # Back up the reference to the exceptionhook
+    sys._excepthook = sys.excepthook
+
+    def my_exception_hook(exctype, value, traceback):
+        # Print the error and traceback
+        print(exctype, value, traceback)
+        # Call the normal Exception hook after
+        sys._excepthook(exctype, value, traceback)
+        sys.exit(1)
+
+    # Set the exception hook to our wrapping function
+    sys.excepthook = my_exception_hook
+
+    try:
+        app = QtWidgets.QApplication(sys.argv)
+        window = SimpleView()
+        window.show()
+        window.iren.Initialize()
+        sys.exit(app.exec_())
+    except:
+        print("Exiting")
+
+
 
 #    main()
