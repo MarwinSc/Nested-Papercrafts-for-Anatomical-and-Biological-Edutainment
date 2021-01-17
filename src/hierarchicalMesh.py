@@ -91,7 +91,8 @@ class HierarchicalMesh(object):
             final_mesh = trimesh.load(self.file)
             for child in self.children:
                 tri_child = trimesh.load(child.file)
-                final_mesh = final_mesh.difference(tri_child, engine='blender')
+                #final_mesh = final_mesh.difference(tri_child, engine='blender')
+                final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
 
             filename = os.path.join(self.dirname, "../out/3D/differenced_" + self.name)
             final_mesh.export(filename)
