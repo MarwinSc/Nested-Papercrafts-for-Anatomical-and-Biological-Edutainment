@@ -99,10 +99,9 @@ class MeshProcessing():
         )
 
         graph.load(filename)
-        if not graph.unfold(5000, 0):
-            print("failed to unfold :(")
+        if not graph.unfold(10000, 0):
+            raise Exception("unfolding failed")
         else:
-            print("succesfully unfolded :)")
             filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
             gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
 

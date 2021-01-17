@@ -6,10 +6,15 @@ import imageProcessing
 from mu3d.mu3dpy.mu3d import Graph
 
 # Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
+from src.hierarchicalMesh import HierarchicalMesh
+
+
 class Organizer():
 
     def __init__(self,ren):
         self.ren = ren
+        # todo move this somewhere meaningful
+        self.hierarchical_mesh_anchor = HierarchicalMesh(None, None)
 
     dirname = os.path.dirname(__file__)
 
@@ -160,6 +165,8 @@ class Organizer():
         else:
             #TODO real obj based system...
             self.nestedList.append(actor)
+
+        self.hierarchical_mesh_anchor.add(actor)
 
         self.ren.AddActor(actor)
 
