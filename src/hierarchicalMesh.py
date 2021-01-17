@@ -3,6 +3,9 @@ import vtkmodules.all as vtk
 
 class HierarchicalMesh(object):
     """
+    Represents a hierarchy of meshes. Tree structure.
+    Children linked to parents and parents to children.
+    Each HierarchicalMesh is associated with a vtkActor.
     """
 
     def __init__(self, parent, mesh):
@@ -34,15 +37,15 @@ class HierarchicalMesh(object):
         # is the mesh inside any of the children?
         # if so add it to the first child we encounter
         for child in self.children:
-            #if child.self.inside(mesh):
-            child.add(mesh)
-            return
+            if child.self.inside(mesh):
+                child.add(mesh)
+                return
 
         # we only get here if it is not inside any of the children
         # check if the mesh is inside this mesh?
         # if not raise an error for now, otherwise the hierarchy needs
         # to be reorganized, ignored for now
-        #if not self.inside(mesh):
-        #    raise RuntimeError('Mesh is outside of this mesh..')
+        if not self.inside(mesh):
+            raise RuntimeError('Mesh is outside of this mesh..')
 
         self.children.append(HierarchicalMesh(self, mesh))
