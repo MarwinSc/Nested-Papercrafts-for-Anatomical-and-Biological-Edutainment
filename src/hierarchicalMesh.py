@@ -58,7 +58,10 @@ class HierarchicalMesh(object):
         :return: True if the given mesh is inside this mesh
         """
 
-        result = meshB_inside_meshA("", "")
+        result = meshB_inside_meshA(b'C:\\Users\\thors\\Documents\\Repositories\\mesh-inside-mesh\\data\\outer_mesh.off', b'C:\\Users\\thors\\Documents\\Repositories\\mesh-inside-mesh\\data\\inner_mesh.off')
+
+
+        print("a inside b ? ", result)
 
         return True
 

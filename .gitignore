@@ -8,3 +8,7 @@
 
 venv
 out/3D/
+
+mim/.vs/
+
+mim/out/build/x64-Debug (default)/

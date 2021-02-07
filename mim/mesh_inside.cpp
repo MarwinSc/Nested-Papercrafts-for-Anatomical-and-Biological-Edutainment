@@ -1,3 +1,4 @@
+#include "mesh_inside.h"
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Polyhedron_3.h>
 #include <CGAL/point_generators_3.h>
@@ -25,7 +26,7 @@ double max_coordinate(const Polyhedron& poly)
 	return max_coord;
 }
 
-Polyhedron get_polyhedron(const char* mesh)
+Polyhedron get_polyhedron(char* mesh)
 {
 	std::ifstream input(mesh);
 	Polyhedron poly;
@@ -39,7 +40,7 @@ Polyhedron get_polyhedron(const char* mesh)
 	return poly;
 }
 
-extern "C" 	__declspec(dllexport) bool __stdcall meshB_inside_of_meshA(const char* meshA, const char* meshB)
+bool __stdcall meshB_inside_of_meshA(char* meshA, char* meshB)
 {
 	Polyhedron polyA = get_polyhedron(meshA);
 	CGAL::Side_of_triangle_mesh<Polyhedron, K> inside(polyA);
