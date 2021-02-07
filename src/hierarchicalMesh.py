@@ -1,5 +1,7 @@
 import os
 import trimesh
+from mim.mim import meshB_inside_meshA
+
 
 class HierarchicalMesh(object):
     """
@@ -55,14 +57,16 @@ class HierarchicalMesh(object):
         :param mesh: mesh that is checked
         :return: True if the given mesh is inside this mesh
         """
-        # TODO: pretend to do something at least
+
+        result = meshB_inside_meshA("", "")
+
         return True
 
     def add(self, mesh, filename):
         """
         Adds the given mesh to the hierarchy
         :param mesh: Mesh that should be added to the hierarchy
-        :param name: Name of the mesh
+        :param filename: Filename of the mesh
         :return: None
         """
         # is the mesh inside any of the children?
