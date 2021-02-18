@@ -178,16 +178,24 @@ class Ui_MainWindow(object):
             writer.SetInputConnection(wti.GetOutputPort())
             writer.Write()
 
+        unfoldIterationsTextfield = QtWidgets.QLineEdit()
+        unfoldIterationsTextfield.setText("100")
+
         saveVPtoImageButton = QtWidgets.QPushButton("Save as Image")
         saveVPtoImageButton.clicked.connect(onSaveVpToImage)
 
         def onCreatePaperMesh():
-            org.createPaperMeshPass()
+            try:
+                iterations = int(unfoldIterationsTextfield.text())
+            except:
+                iterations = 100
+            org.createPaperMeshPass(iterations)
             self.vtkWidget.update()
-
 
         createPaperMeshButton = QtWidgets.QPushButton("Create Papermesh")
         createPaperMeshButton.clicked.connect(onCreatePaperMesh)
+
+
 
         def onProjectPerTriangle():
             self.resultRenderes = org.projectPass(self.inflateStruc)
@@ -244,6 +252,7 @@ class Ui_MainWindow(object):
             org.onUnfoldTest()
         testButton.clicked.connect(onUnfoldTest)
 
+
 #       Layout  --------------------------------------
         groupRight = QtWidgets.QGroupBox()
         layoutRight = QtWidgets.QVBoxLayout()
@@ -293,6 +302,7 @@ class Ui_MainWindow(object):
         paperCreationLayout = QtWidgets.QVBoxLayout()
         paperCreationBox.setLayout(paperCreationLayout)
         paperCreationLayout.addWidget(createPaperMeshButton)
+        paperCreationLayout.addWidget(unfoldIterationsTextfield)
         paperCreationLayout.addWidget(importButton)
         paperCreationLayout.addWidget(projectPerTriangle)
 
@@ -504,9 +514,15 @@ if __name__ == '__main__':
     def my_exception_hook(exctype, value, traceback):
         # Print the error and traceback
         print(exctype, value, traceback)
+
+        msgBox = QtWidgets.QMessageBox()
+        msgBox.setText("Attribute not found, most likely an object or variable wasn't set.")
+        msgBox.exec()
+
         # Call the normal Exception hook after
         sys._excepthook(exctype, value, traceback)
-        sys.exit(1)
+        #sys.exit(1)
+
 
     # Set the exception hook to our wrapping function
     sys.excepthook = my_exception_hook
@@ -519,7 +535,6 @@ if __name__ == '__main__':
         sys.exit(app.exec_())
     except:
         print("Exiting")
-
 
 
 #    main()

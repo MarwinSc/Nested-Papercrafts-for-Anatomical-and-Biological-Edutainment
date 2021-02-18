@@ -16,19 +16,10 @@ class Binder():
         elif platform == "win32":
             filepath = os.path.join(self.dirname, "mu3d.dll")
             self.mu3d = ctypes.CDLL(filepath)
+            #self.mu3d.python_interface.argtypes = [ctypes.c_int,ctypes.c_int]
         else:
             print("Sorry, No Linux Support")
 
-    def getBool(self):
-        bool = ctypes.CDLL('vtkboolPython.so')
-        bool.python_interface()
-
-    def wrap_function(lib, funcname, restype, argtypes):
-        """Simplify wrapping ctypes functions"""
-        func = lib.__getattr__(funcname)
-        func.restype = restype
-        func.argtypes = argtypes
-        return func
 
     def onUnfold(self):
 
@@ -48,4 +39,33 @@ class Binder():
         )
 
         print(filename)
-        print(self.mu3d.python_interface())
+        print(self.mu3d.python_interface(30000,1000))
+
+
+    def unfoldTest(self):
+
+        filename = os.path.join(self.dirname, "../out/3D/upper.stl")
+#        filename = os.path.join(self.dirname, "../out/3D/papermesh_cleaned.off")
+
+
+        mesh = meshio.read(
+            filename,  # string, os.PathLike, or a buffer/open file
+            file_format="stl",  # optional if filename is a path; inferred from extension
+        )
+
+        filename = os.path.join(self.dirname, "../out/3D/papermesh.off")
+
+        meshio.write(
+            filename,  # str, os.PathLike, or buffer/ open file
+            mesh,
+            # file_format="vtk",  # optional if first argument is a path; inferred from extension
+        )
+
+#       print(filename)
+        print(self.mu3d.python_interface(200000,1000))
+
+#       importer = vtk.vtkOBJReader()
+#       filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
+#       importer.SetFileName(filename)
+#       importer.Update()
+#       mesh = importer.GetOutput()

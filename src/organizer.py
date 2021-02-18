@@ -184,9 +184,10 @@ class Organizer():
             self.ren.SetViewport(self.fullViewport)
             self.resultRen.SetViewport(self.noViewport)
 
-    def createPaperMeshPass(self):
+    def createPaperMeshPass(self, iterations):
         mainGraph = Graph()
-        actor = self.meshProcessor.createPapermesh(self.actorList, mainGraph)
+        actor = self.meshProcessor.createPapermesh(self.actorList)
+        actor = self.meshProcessor.mu3dUnfoldPaperMesh(actor, mainGraph, iterations)
         #actor.GetProperty().SetOpacity(0.5)
         #self.ren.AddActor(actor)
         #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())

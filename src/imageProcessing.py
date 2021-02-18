@@ -80,7 +80,7 @@ class ImageProcessor():
 
         return result
 
-    #method carrying out the normalization and multiplycation of the structurs
+    #method carrying out the normalization and multiplication of the structurs
     def normalizeMultiplication(self, image, image2, width, height):
 
         img1 = numpy_support.vtk_to_numpy(image.GetPointData().GetScalars())[:, 0:3]
