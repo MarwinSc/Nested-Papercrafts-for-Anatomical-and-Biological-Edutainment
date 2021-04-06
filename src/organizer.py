@@ -3,7 +3,7 @@ import numpy as np
 import os
 import meshProcessing
 import imageProcessing
-import binder
+import projector
 from mu3d import Graph
 
 # Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
@@ -184,10 +184,15 @@ class Organizer():
             self.ren.SetViewport(self.fullViewport)
             self.resultRen.SetViewport(self.noViewport)
 
-    def createPaperMeshPass(self, iterations):
+    def createPaperMeshPass(self, iterations ,inflateStruc):
         mainGraph = Graph()
         actor = self.meshProcessor.createPapermesh(self.actorList)
-        actor = self.meshProcessor.mu3dUnfoldPaperMesh(actor, mainGraph, iterations)
+        success = self.meshProcessor.mu3dUnfoldPaperMesh(actor, mainGraph, iterations)
+        if success:
+            #should be removed again when a new paperactor is created todo
+            self.ren.AddActor(self.meshProcessor.tempPaperActor)
+            self.meshProcessor.createDedicatedMeshes(inflateStruc, self.actorList)
+
         #actor.GetProperty().SetOpacity(0.5)
         #self.ren.AddActor(actor)
         #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
@@ -203,16 +208,15 @@ class Organizer():
         #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
 
         actor = self.meshProcessor.importUnfoldedMesh()
-        print("yo import geht")
         actor.GetProperty().SetOpacity(0.5)
         self.ren.AddActor(actor)
         self.meshProcessor.createDedicatedMeshes(inflateStruc,self.actorList)
 
-    def projectPass(self,inflateStruc = None):
+    def projectPass(self, inflateStruc = None, resolution = [500,500]):
 
         self.renderers = self.setUpResultRenderers(self.camera)
         self.ren.SetViewport([0.0, 0.0, 0.0, 0.0])
-        actors = self.meshProcessor.projectPerTriangle(inflateStruc,self.actorList)
+        actors = self.meshProcessor.project(inflateStruc,self.actorList, resolution)
         count = 0
         for ren in self.renderers:
             filename = os.path.join(self.dirname, "../out/2D/texture/texture{}.png".format(count))
@@ -230,9 +234,6 @@ class Organizer():
 
         self.dedicatedPaperMeshes = actors
         return self.renderers
-
-    def projectPassTemp(self):
-         self.meshProcessor.projectPerTriangle(self.ren,self.actorList)
 
     def finish(self):
         if hasattr(self, "renderers"):
@@ -287,5 +288,5 @@ class Organizer():
         self.meshProcessor.booleanTrimesh(self.ren,boolGraph,self.actorList,self.nestedList)
 
     def onUnfoldTest(self):
-        print("NOT IMPLEMENTED")
+        self.meshProcessor.unfoldTest(name="unfoldTest4")
         #self.binder.unfoldTest()

@@ -1,4 +1,6 @@
 import vtkmodules.all as vtk
+import numpy as np
+from vtkmodules.numpy_interface.dataset_adapter import numpy_support
 
 def getbufferRenIntWin(camera = vtk.vtkCamera(),width=2000,height=2000):
     ren = vtk.vtkRenderer()
@@ -11,13 +13,16 @@ def getbufferRenIntWin(camera = vtk.vtkCamera(),width=2000,height=2000):
     iren.SetRenderWindow(renWin)
     wti = vtk.vtkWindowToImageFilter()
     wti.SetInput(renWin)
+    #wti.SetScale(1000,1000)
     wti.SetInputBufferTypeToRGB()
     wti.ReadFrontBufferOff()
     return ren,iren,renWin,wti
 
-def printSinglePoint(self,p):
+def printSinglePoint(self, x, y, ren, color):
     newPoints = vtk.vtkPoints()
     vertices = vtk.vtkCellArray()
+
+    p = [x, 0.0, y]
 
     id = newPoints.InsertNextPoint(p)
     vertices.InsertNextCell(1)
@@ -26,7 +31,6 @@ def printSinglePoint(self,p):
     # Create a polydata object
     point = vtk.vtkPolyData()
 
-    # Set the points and vertices we created as the geometry and topology of the polydata
     point.SetPoints(newPoints)
     point.SetVerts(vertices)
 
@@ -34,6 +38,30 @@ def printSinglePoint(self,p):
     mapper.SetInputData(point)
     actor = vtk.vtkActor()
     actor.SetMapper(mapper)
-    actor.GetProperty().SetColor([255.0, 0.0, 0.0])
-    actor.GetProperty().SetPointSize(10)
-    #self.ren.AddActor(actor)
+    actor.GetProperty().SetColor(color)
+    actor.GetProperty().SetPointSize(2)
+    ren.AddActor(actor)
+
+def NpToVtk(img,dx,dy,dz):
+    resultImg = vtk.vtkImageData()
+
+    vtkResult = numpy_support.numpy_to_vtk(img.reshape(dy * dx, dz))
+
+    resultImg.SetSpacing(1., 1., 1.)
+    resultImg.SetOrigin(0., 0., 0.)
+    resultImg.SetDimensions(dx, dy, 1)
+    resultImg.AllocateScalars(numpy_support.get_vtk_array_type(img.dtype), dz)
+    resultImg.GetPointData().SetScalars(vtkResult)
+    return resultImg
+
+def writeImage(img, path):
+    castFilter = vtk.vtkImageCast()
+    castFilter.SetInputData(img)
+    castFilter.SetOutputScalarTypeToUnsignedChar()
+    castFilter.Update()
+
+    writer = vtk.vtkPNGWriter()
+    writer.SetFileName(path)
+    writer.SetInputConnection(castFilter.GetOutputPort())
+    writer.Write()
+    return castFilter.GetOutput()

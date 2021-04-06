@@ -2,7 +2,9 @@ import vtkmodules.all as vtk
 import sys
 from PyQt5 import QtGui, QtWidgets
 import organizer
+import cgal_interface
 import os
+from mu3d import Graph
 
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
@@ -189,16 +191,22 @@ class Ui_MainWindow(object):
                 iterations = int(unfoldIterationsTextfield.text())
             except:
                 iterations = 100
-            org.createPaperMeshPass(iterations)
+            org.createPaperMeshPass(iterations,self.inflateStruc)
             self.vtkWidget.update()
 
         createPaperMeshButton = QtWidgets.QPushButton("Create Papermesh")
         createPaperMeshButton.clicked.connect(onCreatePaperMesh)
 
 
+        resolutionWidth = QtWidgets.QLineEdit()
+        resolutionWidth.setText("500")
 
         def onProjectPerTriangle():
-            self.resultRenderes = org.projectPass(self.inflateStruc)
+            try:
+                width = int(resolutionWidth.text())
+            except:
+                width = 500
+            self.resultRenderes = org.projectPass(self.inflateStruc, resolution = [width, width])
             #org.projectPassTemp()
             self.vtkWidget.update()
 #            self.centralWidget.update()
@@ -250,8 +258,34 @@ class Ui_MainWindow(object):
         testButton = QtWidgets.QPushButton("TestUnfold")
         def onUnfoldTest():
             org.onUnfoldTest()
+
         testButton.clicked.connect(onUnfoldTest)
 
+        cgalTestButton = QtWidgets.QPushButton("CGAL Test")
+
+        def cgalTest():
+            cgal = cgal_interface.CGAL_Interface()
+
+            first = os.path.join(self.dirname, "../out/3D/mesh.off")
+            second = os.path.join(self.dirname, "../out/3D/cutout.off")
+
+            cgal.boolean(first,second)
+
+            graph = Graph()
+
+            filename = os.path.join(self.dirname, "difference.off")
+
+            graph.load(filename)
+            if not graph.unfold(50000, 0):
+                print("failed to unfold :(")
+            else:
+                print("succesfully unfolded :)")
+                filename = os.path.join(self.dirname, "../out/3D/unfolded/difference.obj")
+                gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_difference.obj")
+
+                graph.save(filename, gluetabs_filename)
+
+        cgalTestButton.clicked.connect(cgalTest)
 
 #       Layout  --------------------------------------
         groupRight = QtWidgets.QGroupBox()
@@ -305,6 +339,7 @@ class Ui_MainWindow(object):
         paperCreationLayout.addWidget(unfoldIterationsTextfield)
         paperCreationLayout.addWidget(importButton)
         paperCreationLayout.addWidget(projectPerTriangle)
+        paperCreationLayout.addWidget(resolutionWidth)
 
         editBox = QtWidgets.QGroupBox()
         editLayout = QtWidgets.QVBoxLayout()
@@ -324,7 +359,7 @@ class Ui_MainWindow(object):
 
         debugBox_Layout.addWidget(booleanButton)
         debugBox_Layout.addWidget(testButton)
-
+        debugBox_Layout.addWidget(cgalTestButton)
 
         layoutLeft.addWidget(debugBox)
 
