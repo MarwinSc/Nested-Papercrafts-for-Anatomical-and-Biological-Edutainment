@@ -15,16 +15,17 @@ class HierarchicalMesh(object):
         Initialises a hierarchical mesh.
         :param self: this
         :param mesh: mesh associated with this
-        :param name: name of the mesh
         :return: None
         """
         self.mesh = mesh
         self.children = []
         self.parent = parent
+
         if parent is None:
             self.name = filename
         else:
             self.name = filename[filename.rfind('/')+1:]
+            self.offname = filename[:filename.rfind('.')] + ".off"
             print(self.name, "added to ", parent.name)
 
         self.file = filename
@@ -51,19 +52,15 @@ class HierarchicalMesh(object):
             for child in self.children:
                 child.render(level-1, renderer)
 
-    def inside(self, mesh):
+    def inside(self, file):
         """
         Checks if the given mesh is inside this mesh.
-        :param mesh: mesh that is checked
+        :param file: file of mesh that is checked
         :return: True if the given mesh is inside this mesh
         """
-
-        result = meshB_inside_meshA(b'C:\\Users\\thors\\Documents\\Repositories\\mesh-inside-mesh\\data\\outer_mesh.off', b'C:\\Users\\thors\\Documents\\Repositories\\mesh-inside-mesh\\data\\inner_mesh.off')
-
-
-        print("a inside b ? ", result)
-
-        return True
+        meshB = file[:file.rfind('.')] + ".off"
+        print(self.offname, meshB)
+        return meshB_inside_meshA(bytes(self.offname, 'utf-8'), bytes(meshB, 'utf-8'))
 
     def add(self, mesh, filename):
         """
@@ -72,21 +69,30 @@ class HierarchicalMesh(object):
         :param filename: Filename of the mesh
         :return: None
         """
+
         # is the mesh inside any of the children?
         # if so add it to the first child we encounter
         for child in self.children:
-            if child.inside(mesh):
-                child.add(mesh, filename)
-                return
+            if child.add(mesh, filename):
+                return True
 
-        # we only get here if it is not inside any of the children
-        # check if the mesh is inside this mesh?
-        # if not raise an error for now, otherwise the hierarchy needs
-        # to be reorganized, ignored for now
-        if not self.inside(mesh):
-            raise RuntimeError('Mesh is outside of this mesh..')
+        # if this object does not have a mesh
+        # it's top level therefore we can add any mesh here
+        # if it was not added to any children
+        # or we are nto top level and it's inside the current mesh
+        if self.mesh is None or self.inside(filename):
+            # this means any of this children is potentially a child of the new mesh
+            temp = self.children.copy()
+            self.children.clear()
+            self.children.append(HierarchicalMesh(self, mesh, filename))
+            for tmp_child in temp:
+                if not self.children[0].add(tmp_child.mesh, tmp_child.file):
+                    self.children.append(tmp_child)
 
-        self.children.append(HierarchicalMesh(self, mesh, filename))
+            return True
+
+        return False
+
 
     def recursive_difference(self):
         """
