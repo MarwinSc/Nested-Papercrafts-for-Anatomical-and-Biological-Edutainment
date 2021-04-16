@@ -1,3 +1,4 @@
+import projector as projector
 import vtkmodules.all as vtk
 import numpy as np
 import os
@@ -5,6 +6,7 @@ import meshInteraction
 import trimesh
 import meshio
 from mu3d.mu3dpy.mu3d import Graph
+
 
 #Class responsible for mesh related processing steps and I/O.
 class MeshProcessing():

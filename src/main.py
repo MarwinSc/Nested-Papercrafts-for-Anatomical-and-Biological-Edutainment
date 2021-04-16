@@ -4,7 +4,7 @@ from PyQt5 import QtGui, QtWidgets, QtCore
 import organizer
 import cgal_interface
 import os
-from mu3d import Graph
+from mu3d.mu3dpy.mu3d import Graph
 
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
