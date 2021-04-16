@@ -1,6 +1,6 @@
 import vtkmodules.all as vtk
 import sys
-from PyQt5 import QtGui, QtWidgets
+from PyQt5 import QtGui, QtWidgets, QtCore
 import organizer
 import cgal_interface
 import os
@@ -250,10 +250,27 @@ class Ui_MainWindow(object):
         selectRegionButton.clicked.connect(onRegionSelection)
 
         booleanButton = QtWidgets.QPushButton("Boolean")
+
         def onBoolean():
             #self.inflateStruc[]
             org.boolean()
         booleanButton.clicked.connect(onBoolean)
+
+        hierarchySlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        hierarchySlider.setRange(1, 4)
+
+        def onHierarchySlider(value):
+            org.draw_level(value)
+            self.vtkWidget.GetRenderWindow().Render()
+
+        hierarchySlider.valueChanged.connect(onHierarchySlider)
+
+        hierarchical_difference_button = QtWidgets.QPushButton("Hierarchial Difference")
+
+        def on_hierarchical_difference():
+            org.hierarchical_difference()
+
+        hierarchical_difference_button.clicked.connect(on_hierarchical_difference)
 
         testButton = QtWidgets.QPushButton("TestUnfold")
         def onUnfoldTest():
@@ -358,6 +375,8 @@ class Ui_MainWindow(object):
         debugBox.setLayout(debugBox_Layout)
 
         debugBox_Layout.addWidget(booleanButton)
+        debugBox_Layout.addWidget(hierarchySlider)
+        debugBox_Layout.addWidget(hierarchical_difference_button)
         debugBox_Layout.addWidget(testButton)
         debugBox_Layout.addWidget(cgalTestButton)
 

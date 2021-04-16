@@ -1,0 +1,1 @@
+extern "C" 	__declspec(dllexport) bool __stdcall meshB_inside_of_meshA(char* meshA, char* meshB);

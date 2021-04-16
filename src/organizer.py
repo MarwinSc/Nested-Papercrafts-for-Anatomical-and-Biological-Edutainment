@@ -3,14 +3,18 @@ import numpy as np
 import os
 import meshProcessing
 import imageProcessing
-import projector
-from mu3d import Graph
+from mu3d.mu3dpy.mu3d import Graph
 
 # Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
+from src.hierarchicalMesh import HierarchicalMesh
+
+
 class Organizer():
 
     def __init__(self,ren):
         self.ren = ren
+        # todo move this somewhere meaningful
+        self.hierarchical_mesh_anchor = HierarchicalMesh(None, None, "Empty")
 
     dirname = os.path.dirname(__file__)
 
@@ -162,7 +166,15 @@ class Organizer():
             #TODO real obj based system...
             self.nestedList.append(actor)
 
+        self.hierarchical_mesh_anchor.add(actor, name)
+
         self.ren.AddActor(actor)
+
+    def draw_level(self, level):
+        self.hierarchical_mesh_anchor.render(level, self.ren)
+
+    def hierarchical_difference(self):
+        self.hierarchical_mesh_anchor.recursive_difference()
 
     def colorFilterImage(self,color):
         self.imageProcessor.canvas_source.SetDrawColor(color[0],color[1],color[2],255)

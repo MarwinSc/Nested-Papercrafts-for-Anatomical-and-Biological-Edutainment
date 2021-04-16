@@ -4,12 +4,9 @@ import os
 import meshInteraction
 import trimesh
 import meshio
-import projector
-from PyQt5 import QtWidgets
-from mu3d import Graph
+from mu3d.mu3dpy.mu3d import Graph
 
-
-##Class responsible for mesh related processing steps and I/O.
+#Class responsible for mesh related processing steps and I/O.
 class MeshProcessing():
 
     dirname = os.path.dirname(__file__)
