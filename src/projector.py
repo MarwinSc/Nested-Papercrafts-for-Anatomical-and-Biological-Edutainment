@@ -38,10 +38,11 @@ class Projector:
         #        camera.SetViewUp(0, 1, 0)
         camera.ParallelProjectionOn()
         camera.Zoom(0.01)
-        camera.SetClippingRange(0.0001, 500.01)
-        if inflateStruc:
-            if not inflateStruc[meshNr]:
-                camera.SetClippingRange(0.0001, 60.01)
+        camera.SetClippingRange(0.0001, 150.01)
+        #TODO reimplement with hierachical Mesh
+        #if inflateStruc:
+        #    if not inflateStruc[meshNr]:
+        #        camera.SetClippingRange(0.0001, 60.01)
 
         depthPeeling = True
         occlusion = 0.1
@@ -131,7 +132,7 @@ class Projector:
 
             # --------------
             #dy, dx, dz = triangle.shape
-
+            #print(i)
             #filename = os.path.join(self.dirname, "../out/2D/triangle{}.png".format(i))
             #util.writeImage(util.NpToVtk(triangle,dx,dy,dz),filename)
 
@@ -153,7 +154,6 @@ class Projector:
                 uvArray.InsertNextTuple2(np.where(maskBlue)[1][0] + img.shape[1],np.where(maskBlue)[0][0])
 
                 #potential problems here that large triangles after the first one could be to big for the image shape todo
-                #does the resolution has to be added vertically?
                 if len(img[0]) == 0:
                     img = triangle
                     black = np.zeros((resolution[0], img.shape[1], img.shape[2]))
@@ -179,16 +179,7 @@ class Projector:
                 bufferPaper.RemoveAllViewProps()
                 buffer.RemoveAllViewProps()
 
-        #cutting away the black area at the top of the images.
-        #not working for some reason, but also not necessary, just making the img smaller todo
-        mask = np.where(img > [0.0,0.0,0.0])
-
-        width = mask[0].max() - mask[0].min()
-        height = mask[1].max() - mask[1].min()
-        if width > height:
-            img = img[mask[0].min():mask[0].max(), mask[1].min(): mask[1].min() + width, :]
-        else:
-            img = img[mask[0].min():mask[0].min() + height, mask[1].min(): mask[1].max(), :]
+        #todo cutting away the black area at the top of the images.
 
         dy, dx, dz = img.shape
         filename = os.path.join(self.dirname, "../out/2D/texture/texture{}.png".format(meshNr))
@@ -329,7 +320,7 @@ class Projector:
         mesh = originalPaperMesh.GetMapper().GetInput()
 
         # TODO Set automatically based on the relative size of the uv grid
-        width = 300
+        width = 400
 
         textureCoordinates = mesh.GetPointData().GetTCoords()
 
@@ -396,6 +387,8 @@ class Projector:
         camera.SetPosition(0, -600, 0)
         camera.SetFocalPoint(0, 0, 0)
         camera.SetViewUp(0, 0, 1)
+        camera.ParallelProjectionOn()
+        camera.SetParallelScale(500.0)
         ren, iren, renWin, wti = util.getbufferRenIntWin(camera, width=5000, height=5000)
         renWin.SetOffScreenRendering(1)
 

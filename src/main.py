@@ -1,10 +1,10 @@
 import vtkmodules.all as vtk
 import sys
-from PyQt5 import QtGui, QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore
 import organizer
-import cgal_interface
+from boolean import boolean_interface
 import os
-from mu3d.mu3dpy.mu3d import Graph
+from mu3d.mu3d import Graph
 
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
@@ -206,7 +206,7 @@ class Ui_MainWindow(object):
                 width = int(resolutionWidth.text())
             except:
                 width = 500
-            self.resultRenderes = org.projectPass(self.inflateStruc, resolution = [width, width])
+            org.projectPass(self.inflateStruc, resolution = [width, width])
             #org.projectPassTemp()
             self.vtkWidget.update()
 #            self.centralWidget.update()
@@ -214,10 +214,13 @@ class Ui_MainWindow(object):
         projectPerTriangle = QtWidgets.QPushButton("Project")
         projectPerTriangle.clicked.connect(onProjectPerTriangle)
 
+        importTextfield = QtWidgets.QLineEdit()
+        importTextfield.setText("model")
+
         def onImport():
-            org.importUnfoldedMeshPass(self.inflateStruc)
+            org.importUnfoldedMeshPass(self.inflateStruc,importTextfield.text())
             self.vtkWidget.GetRenderWindow().Render()
-        importButton = QtWidgets.QPushButton("Import")
+        importButton = QtWidgets.QPushButton("Import .obj Papermesh")
         importButton.clicked.connect(onImport)
 
         def onFlatten():
@@ -252,7 +255,6 @@ class Ui_MainWindow(object):
         booleanButton = QtWidgets.QPushButton("Boolean")
 
         def onBoolean():
-            #self.inflateStruc[]
             org.boolean()
         booleanButton.clicked.connect(onBoolean)
 
@@ -277,32 +279,6 @@ class Ui_MainWindow(object):
             org.onUnfoldTest()
 
         testButton.clicked.connect(onUnfoldTest)
-
-        cgalTestButton = QtWidgets.QPushButton("CGAL Test")
-
-        def cgalTest():
-            cgal = cgal_interface.CGAL_Interface()
-
-            first = os.path.join(self.dirname, "../out/3D/mesh.off")
-            second = os.path.join(self.dirname, "../out/3D/cutout.off")
-
-            cgal.boolean(first,second)
-
-            graph = Graph()
-
-            filename = os.path.join(self.dirname, "difference.off")
-
-            graph.load(filename)
-            if not graph.unfold(50000, 0):
-                print("failed to unfold :(")
-            else:
-                print("succesfully unfolded :)")
-                filename = os.path.join(self.dirname, "../out/3D/unfolded/difference.obj")
-                gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_difference.obj")
-
-                graph.save(filename, gluetabs_filename)
-
-        cgalTestButton.clicked.connect(cgalTest)
 
 #       Layout  --------------------------------------
         groupRight = QtWidgets.QGroupBox()
@@ -343,6 +319,14 @@ class Ui_MainWindow(object):
         layoutCg.addWidget(imageName)
         layoutCg.addWidget(saveVPtoImageButton)
 
+        #import
+        importGroup = QtWidgets.QGroupBox()
+        importLayout = QtWidgets.QVBoxLayout()
+        importGroup.setLayout(importLayout)
+
+        importLayout.addWidget(importButton)
+        importLayout.addWidget(importTextfield)
+
         #Insert Groups
         layoutRight.addWidget(progressBar)
 
@@ -354,7 +338,7 @@ class Ui_MainWindow(object):
         paperCreationBox.setLayout(paperCreationLayout)
         paperCreationLayout.addWidget(createPaperMeshButton)
         paperCreationLayout.addWidget(unfoldIterationsTextfield)
-        paperCreationLayout.addWidget(importButton)
+        paperCreationLayout.addWidget(importGroup)
         paperCreationLayout.addWidget(projectPerTriangle)
         paperCreationLayout.addWidget(resolutionWidth)
 
@@ -378,7 +362,6 @@ class Ui_MainWindow(object):
         debugBox_Layout.addWidget(hierarchySlider)
         debugBox_Layout.addWidget(hierarchical_difference_button)
         debugBox_Layout.addWidget(testButton)
-        debugBox_Layout.addWidget(cgalTestButton)
 
         layoutLeft.addWidget(debugBox)
 

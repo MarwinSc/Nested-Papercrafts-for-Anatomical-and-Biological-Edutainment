@@ -1,14 +1,12 @@
 import vtkmodules.all as vtk
-import numpy as np
 import os
 import meshProcessing
 import imageProcessing
-from mu3d.mu3dpy.mu3d import Graph
-
-# Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
+import util
+from mu3d.mu3d import Graph
 from src.hierarchicalMesh import HierarchicalMesh
 
-
+# Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
 class Organizer():
 
     def __init__(self,ren):
@@ -166,7 +164,8 @@ class Organizer():
             #TODO real obj based system...
             self.nestedList.append(actor)
 
-        self.hierarchical_mesh_anchor.add(actor, name)
+        #couldn't import multiple structures with that method call enabled
+        #self.hierarchical_mesh_anchor.add(actor, name)
 
         self.ren.AddActor(actor)
 
@@ -199,38 +198,47 @@ class Organizer():
     def createPaperMeshPass(self, iterations ,inflateStruc):
         mainGraph = Graph()
         actor = self.meshProcessor.createPapermesh(self.actorList)
+        #self.ren.AddActor(self.meshProcessor.tempPaperActor)
         success = self.meshProcessor.mu3dUnfoldPaperMesh(actor, mainGraph, iterations)
         if success:
             #should be removed again when a new paperactor is created todo
             self.ren.AddActor(self.meshProcessor.tempPaperActor)
             self.meshProcessor.createDedicatedMeshes(inflateStruc, self.actorList)
 
-        #actor.GetProperty().SetOpacity(0.5)
-        #self.ren.AddActor(actor)
-        #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
-        #self.meshProcessor.createDedicatedMeshes(inflateStruc,self.actorList)
-        #actor = self.meshProcessor.importUnfoldedMesh()
-        #actor.GetProperty().SetOpacity(0.5)
-        #self.ren.AddActor(actor)
-
     def createDedicatedPaperMeshesPass(self,inflateStrucList):
         self.meshProcessor.createDedicatedMeshes(inflateStrucList,self.actorList)
 
-    def importUnfoldedMeshPass(self, inflateStruc):
+    def importUnfoldedMeshPass(self, inflateStruc, name):
         #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
 
-        actor = self.meshProcessor.importUnfoldedMesh()
+        actor = self.meshProcessor.importUnfoldedMesh(name)
         actor.GetProperty().SetOpacity(0.5)
         self.ren.AddActor(actor)
         self.meshProcessor.createDedicatedMeshes(inflateStruc,self.actorList)
 
     def projectPass(self, inflateStruc = None, resolution = [500,500]):
 
-        self.renderers = self.setUpResultRenderers(self.camera)
         self.ren.SetViewport([0.0, 0.0, 0.0, 0.0])
         actors = self.meshProcessor.project(inflateStruc,self.actorList, resolution)
         count = 0
-        for ren in self.renderers:
+
+        filename = os.path.join(self.dirname, "../out/2D/unfolding{}.png".format(count))
+        readerFac = vtk.vtkImageReader2Factory()
+        imageReader = readerFac.CreateImageReader2(filename)
+        imageReader.SetFileName(filename)
+        texture = vtk.vtkTexture()
+        texture.SetInputConnection(imageReader.GetOutputPort())
+
+        self.meshProcessor.tempPaperActor.SetTexture(texture)
+        self.meshProcessor.tempPaperActor.Modified()
+
+        util.writeObj(self.meshProcessor.tempPaperActor.GetMapper().GetInput(), "tempPaper")
+
+        self.renderers = self.setUpResultRenderers(self.camera,len(actors)+1)
+        self.ren.GetRenderWindow().AddRenderer(self.renderers[0])
+        self.renderers[0].AddActor(self.meshProcessor.tempPaperActor)
+
+        for actor in actors:
             filename = os.path.join(self.dirname, "../out/2D/texture/texture{}.png".format(count))
             readerFac = vtk.vtkImageReader2Factory()
             imageReader = readerFac.CreateImageReader2(filename)
@@ -238,12 +246,13 @@ class Organizer():
             texture = vtk.vtkTexture()
             texture.SetInputConnection(imageReader.GetOutputPort())
 
-            self.ren.GetRenderWindow().AddRenderer(ren)
+            self.ren.GetRenderWindow().AddRenderer(self.renderers[count+1])
             actors[count].GetProperty().SetColor([1.0,1.0,1.0])
             actors[count].SetTexture(texture)
-            ren.AddActor(actors[count])
+            self.renderers[count+1].AddActor(actors[count])
             count += 1
 
+        actors.insert(0,self.meshProcessor.tempPaperActor)
         self.dedicatedPaperMeshes = actors
         return self.renderers
 
@@ -266,21 +275,25 @@ class Organizer():
         self.meshProcessor.tempPaperActor.GetProperty().SetOpacity(1.0)
         self.ren.AddActor(self.meshProcessor.tempPaperActor)
 
-    def setUpResultRenderers(self,camera):
-        rendererMesh1 = vtk.vtkRenderer()
-        rendererMesh1.SetActiveCamera(camera)
-        rendererMesh1.SetViewport([0.0, 0.0, 0.33, 1.0])
-        rendererMesh1.SetBackground(255.0,255.0,255.0)
-        rendererMesh2 = vtk.vtkRenderer()
-        rendererMesh2.SetActiveCamera(camera)
-        rendererMesh2.SetViewport([0.33, 0.0, 0.66, 1.0])
-        rendererMesh2.SetBackground(255.0,255.0,255.0)
-        rendererMesh3 = vtk.vtkRenderer()
-        rendererMesh3.SetActiveCamera(camera)
-        rendererMesh3.SetViewport([0.66, 0.0, 1.0, 1.0])
-        rendererMesh3.SetBackground(255.0,255.0,255.0)
+    def setUpResultRenderers(self,camera,count):
 
-        return [rendererMesh1, rendererMesh2, rendererMesh3]
+        renderers = []
+
+        width = 1.0 / count
+        right = 0.0
+        left = width
+
+        for i in range(count):
+
+            render = vtk.vtkRenderer()
+            render.SetActiveCamera(camera)
+            render.SetViewport([right, 0.0, left, 1.0])
+            render.SetBackground(255.0,255.0,255.0)
+            renderers.append(render)
+            right += width
+            left += width
+
+        return renderers
 
     def onFlatten(self,pickerIds, inflateStruc):
         for ren in self.renderers:
@@ -296,9 +309,8 @@ class Organizer():
         self.renderers[renId].AddActor(actor)
 
     def boolean(self):
-        boolGraph = Graph()
-        self.meshProcessor.booleanTrimesh(self.ren,boolGraph,self.actorList,self.nestedList)
+        self.meshProcessor.booleanCGAL(self.nestedList)
 
     def onUnfoldTest(self):
-        self.meshProcessor.unfoldTest(name="unfoldTest4")
+        self.meshProcessor.unfoldTest(name="lower")
         #self.binder.unfoldTest()
