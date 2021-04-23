@@ -3,7 +3,7 @@ import os
 import meshProcessing
 import imageProcessing
 import util
-from mu3d.mu3d import Graph
+from mu3d.mu3dpy.mu3d import Graph
 from src.hierarchicalMesh import HierarchicalMesh
 
 # Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.

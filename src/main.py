@@ -4,7 +4,7 @@ from PyQt5 import QtWidgets, QtCore
 import organizer
 from boolean import boolean_interface
 import os
-from mu3d.mu3d import Graph
+from mu3d.mu3dpy.mu3d import Graph
 
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 

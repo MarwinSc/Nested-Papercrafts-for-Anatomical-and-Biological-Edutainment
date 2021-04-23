@@ -6,7 +6,7 @@ import meshInteraction
 import meshio
 import util
 from boolean import boolean_interface
-from mu3d.mu3d import Graph
+from mu3d.mu3dpy.mu3d import Graph
 from PyQt5 import QtWidgets
 
 #Class responsible for mesh related processing steps and I/O.
