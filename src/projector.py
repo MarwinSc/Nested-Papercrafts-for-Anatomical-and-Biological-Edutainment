@@ -4,16 +4,23 @@ import numpy as np
 import os
 import util
 
-#Class to handle projecting the rendered structures onto a texture image.
 class Projector:
+    '''
+    Class to handle projecting the rendered structures onto a texture image.
+    '''
 
     dirname = os.path.dirname(__file__)
 
-    ##Rendering method that produces a long texture image of concatenated renderings of the triangles from the papermesh.
-    def projectPerTriangle(self,dedicatedPaperMesh, inflateStruc,actorList,meshNr = 0, resolution = [500,500]):
-
+    def projectPerTriangle(self,dedicatedPaperMesh, structure ,meshNr = 0, resolution = [500,500]):
+        '''
+        Rendering method that produces a long texture image of concatenated renderings of the triangles from the papermesh.
+        :param dedicatedPaperMesh: the projection mesh.
+        :param structure: the structure to project on the mesh.
+        :param meshNr: index used only for the filename.
+        :param resolution: resolution for the rendering of each triangle.
+        :return: the projection mesh with the created texture assigned.
+        '''
         paper = dedicatedPaperMesh.GetMapper().GetInput()
-        #textureCoordinates = paper.GetPointData().GetTCoords()
 
         centersFilter = vtk.vtkCellCenters()
         centersFilter.SetInputData(paper)
@@ -38,7 +45,7 @@ class Projector:
         #        camera.SetViewUp(0, 1, 0)
         camera.ParallelProjectionOn()
         camera.Zoom(0.01)
-        camera.SetClippingRange(0.0001, 150.01)
+        camera.SetClippingRange(0.0001, 300.01)
         #TODO reimplement with hierachical Mesh
         #if inflateStruc:
         #    if not inflateStruc[meshNr]:
@@ -86,6 +93,7 @@ class Projector:
         else:
             buffer.SetUseDepthPeeling(False)
 
+        #-----------------
         transparent = [0.0, 0.0, 0.0, 0.0]
         cellData = vtk.vtkUnsignedCharArray()
         cellData.SetNumberOfComponents(4)
@@ -96,6 +104,7 @@ class Projector:
         paper.GetCellData().SetScalars(cellData)
         paper.GetCellData().Modified()
         paper.Modified()
+        #-----------------
 
         uvArray = vtk.vtkDoubleArray()
         uvArray.SetNumberOfComponents(2)
@@ -110,8 +119,9 @@ class Projector:
             centersFilter.GetOutput().GetPoint(i, p)
 
             p2 = normalDataDouble.GetTuple3(i)
-
-            position = [p[0] + (p2[0] * -5), p[1] + (p2[1] * -5), p[2] + (p2[2] * -5)]
+            normalScale = -5
+            #+0.01 because of the lighting, which renders everything white if viewed parallel to the z-axis
+            position = [p[0]+0.01 + (p2[0] * normalScale), p[1]+0.01 + (p2[1] * normalScale), p[2]+0.01 + (p2[2] * normalScale)]
 
             camera.SetPosition(position)
             camera.SetFocalPoint(p)
@@ -128,11 +138,11 @@ class Projector:
             self.drawPoints(points,bufferPoints)
 
             # render frame
-            triangle, pointsImg = self.renderHelper(camera, buffer, bufferPaper, bufferPoints, bufferWin, bufferWinPoints, i, actorList[meshNr])
+            triangle, pointsImg = self.renderHelper(camera, buffer, bufferPaper, bufferPoints, bufferWin, bufferWinPoints, i, structure)
 
             # --------------
             #dy, dx, dz = triangle.shape
-            #print(i)
+            print(i)
             #filename = os.path.join(self.dirname, "../out/2D/triangle{}.png".format(i))
             #util.writeImage(util.NpToVtk(triangle,dx,dy,dz),filename)
 
@@ -208,8 +218,13 @@ class Projector:
 
         return dedicatedPaperMesh
 
-    #drawing the points used for cropping the rendered triangles and uv mapping onto the long texture image
     def drawPoints(self,points,bufferPoints):
+        '''
+        Draws the points used for cropping the rendered triangles and uv mapping onto the long texture image.
+        :param points: the vtk points.
+        :param bufferPoints: the renderer for the points.
+        :return:
+        '''
         pointActor = vtk.vtkActor()
 
         colors = vtk.vtkNamedColors()
@@ -253,9 +268,8 @@ class Projector:
         pointActor.GetProperty().SetPointSize(2)
         bufferPoints.AddActor(pointActor)
 
-    ##Was necessary at some stage of programming, could be removed later on TODO
     def renderHelper(self, camera, buffer, bufferPaper, bufferPoints, bufferWin, bufferWinPoints, count, actor):
-
+        ##Was necessary at some stage of programming, could be removed later on.
         buffer.AddActor(actor)
 
         buffer.SetActiveCamera(camera)
@@ -280,8 +294,15 @@ class Projector:
 
         return triangleImg, pointsImg
 
-    ##Receives the uncropped image of a single triangle and crops it to the bounds of the triangle, based on the pointsImage.
     def cropRenderedTriangle(self, image, pointsImage, resolution, count = 1):
+        '''
+        Receives the image of a single triangle and the dedicated image of corner points and crops it to the bounds of the triangle, based on the pointsImage.
+        :param image: rendered triangle as vtk image.
+        :param pointsImage: rendered points as vtk image.
+        :param resolution: resolution of the rendering.
+        :param count:
+        :return: returns both images cropped to the axis aligned bounds.
+        '''
         img = numpy_support.vtk_to_numpy(image.GetPointData().GetScalars())[:, 0:3]
         points = numpy_support.vtk_to_numpy(pointsImage.GetPointData().GetScalars())[:, 0:3]
 
@@ -303,20 +324,22 @@ class Projector:
             result = img[mask[0].min()-2:mask[0].max()+2, mask[1].min()-2 : mask[1].max()+2, :]
             pointsResult = points[mask[0].min()-2:mask[0].max()+2, mask[1].min()-2 : mask[1].max()+2, :]
         else:
-            #should be removed for better error handling todo
+            #could be removed for better error handling todo
             result = [[[1.0,0.0,0.0],[1.0,0.0,0.0],[1.0,0.0,0.0]],[[1.0,0.0,0.0],[1.0,0.0,0.0],[1.0,0.0,0.0]],[[1.0,0.0,0.0],[1.0,0.0,0.0],[1.0,0.0,0.0]]]
             result = np.array(result)
             pointsResult = result
 
         return result, pointsResult
 
-
-    ##Method that maps the created texture to an mesh which is created according to the unfolded uv layout, interpreted as 2D coordinates
-    # thus creating the final rendering for the printable paper template
-    #dedicatedPaperMesh: the created paperMesh with uvs mapped to the created long texture
-    #originalPaperMesh: the general papermesh with unfolded uv layout for this structure that is imported
     def createUnfoldedPaperMesh(self,dedicatedPaperMesh, originalPaperMesh, idx):
-
+        '''
+        Method that maps the created texture to an mesh which is created according to the unfolded uv layout,
+        interpreted as 2D coordinates,  thus creating the final rendering for the printable paper template.
+        :param dedicatedPaperMesh: the created paperMesh with uvs mapped to the created long texture.
+        :param originalPaperMesh: the general papermesh with unfolded uv layout for this structure that is imported.
+        :param idx: number for the filename.
+        :return:
+        '''
         mesh = originalPaperMesh.GetMapper().GetInput()
 
         # TODO Set automatically based on the relative size of the uv grid
@@ -399,7 +422,6 @@ class Projector:
 
         imgWidth = wti.GetOutput().GetExtent()[1] + 1
         imgHeight = wti.GetOutput().GetExtent()[3] + 1
-        print(imgWidth, " ", imgHeight)
 
         img = self.vtkToNpHelper(wti.GetOutput(), imgWidth, imgHeight)
 

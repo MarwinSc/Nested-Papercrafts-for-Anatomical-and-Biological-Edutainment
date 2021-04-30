@@ -1,86 +1,43 @@
-import projector as projector
 import vtkmodules.all as vtk
 import numpy as np
 import os
-import meshInteraction
-import meshio
+from mesh import Mesh
 import util
 from boolean import boolean_interface
 from mu3d.mu3dpy.mu3d import Graph
 from PyQt5 import QtWidgets
 
-#Class responsible for mesh related processing steps and I/O.
 class MeshProcessing():
+    '''
+    Class responsible for mesh related processing steps and I/O.
+    '''
 
     dirname = os.path.dirname(__file__)
 
-    dedicatedPaperMeshes = []
     tempPaperActor = vtk.vtkActor()
 
-    projector = projector.Projector()
-    meshInteractor = meshInteraction.MeshInteraction(dedicatedPaperMeshes)
+    #meshInteractor = meshInteraction.MeshInteraction(dedicatedPaperMeshes)
 
-    ##Create initial Mesh to subdivide and wrap
-    def createPapermesh(self,actorList, boolReturn = False):
-
-        polysAppended = self.appendAllMeshes(actorList)
-
-        hull = vtk.vtkHull()
-        hull.SetInputData(polysAppended)
-        hull.AddCubeFacePlanes()
-        hull.Update()
-
-        triangleFilter = vtk.vtkTriangleFilter()
-        triangleFilter.SetInputData(hull.GetOutput())
-        triangleFilter.Update()
-
-        mesh = util.subdivideMesh(triangleFilter.GetOutput())
-
-        mesh = util.shrinkWrap(mesh,polysAppended)
-        paperMesh = util.offsetMesh(mesh)
-
-        paperMesh = self.calcMeshNormals(paperMesh)
-        #paperMesh.GetPointData().SetNormals(normals)
-
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputData(paperMesh)
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-
-        if not boolReturn:
-            self.tempPaperActor = actor
-        return actor
-
-    ##Calls the mu3d framework to unfold the mesh given with hardcodet filename, could be changed todo.
     def mu3dUnfoldPaperMesh(self, actor, graph, iterations):
-        filename = os.path.join(self.dirname, "../out/3D/papermesh.stl")
-        # objWriter.SetFilePrefix(filename)
-        # objWriter.Write()
+        '''
+        Forwards the mesh to the mu3d wrapper to unfold it.
+        :param actor: The vtk actor containing the mesh to unfold.
+        :param graph: The wrapped mu3d graph object.
+        :param iterations: The iterations for the unfolding.
+        :return: If the unfolding is successful the vtk actor containing the unfolded mesh is returned.
+        '''
+        inpath = os.path.join(self.dirname, "../out/3D/papermesh.stl")
+        outpath = os.path.join(self.dirname, "../out/3D/papermesh.off")
+        util.writeStl(actor.GetMapper().GetInput(),"papermesh")
 
-        stlWriter = vtk.vtkSTLWriter()
-        stlWriter.SetFileName(filename)
-        stlWriter.SetInputData(actor.GetMapper().GetInput())
-        stlWriter.Write()
+        util.meshioIO(inpath,outpath)
 
-        mesh = meshio.read(
-            filename,  # string, os.PathLike, or a buffer/open file
-            file_format="stl",  # optional if filename is a path; inferred from extension
-        )
-
-        filename = os.path.join(self.dirname, "../out/3D/papermesh.off")
-
-        meshio.write(
-            filename,  # str, os.PathLike, or buffer/ open file
-            mesh,
-            # file_format="vtk",  # optional if first argument is a path; inferred from extension
-        )
-
-        graph.load(filename)
+        graph.load(outpath)
         if not graph.unfold(iterations, 0):
             msgBox = QtWidgets.QMessageBox()
             msgBox.setText("failed to unfold :( in {} iterations".format(iterations))
             msgBox.exec()
-            return False
+            return None
         else:
             print("succesfully unfolded :) in {} iterations".format(iterations))
 
@@ -89,13 +46,8 @@ class MeshProcessing():
 
             graph.save(filename, gluetabs_filename)
 
-            importer = vtk.vtkOBJReader()
             filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
-            importer.SetFileName(filename)
-            importer.Update()
-
-            mesh = importer.GetOutput()
-            mesh = self.shiftUVsToOrigin(mesh)
+            mesh = util.readObj(filename)
             mesh = self.normalizeUV(mesh)
             mesh = self.calcMeshNormals(mesh)
 
@@ -108,44 +60,29 @@ class MeshProcessing():
             actor.GetProperty().BackfaceCullingOn()
             actor.GetProperty().SetOpacity(0.5)
 
-            self.tempPaperActor = actor
-
             #just to write the model with normalized uvs
-            filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
-            objWriter = vtk.vtkOBJWriter()
-            objWriter.SetInputData(actor.GetMapper().GetInput())
-            objWriter.SetFileName(filename)
-            objWriter.Write()
+            util.writeObj(actor.GetMapper().GetInput(), "unfolded/model")
+            return actor
 
-            return True
+    def createDedicatedMeshes(self, hierarchy):
+        '''
+        For each loaded structure in the given hierarchical mesh create a projection mesh depending on the chosen projection method for this structure.
+        :param hierarchy: a hierarchical mesh object
+        :return:
+        '''
+        meshes = hierarchy.meshes
+        for a in range(len(meshes)):
 
-    def appendAllMeshes(self, actorList):
+            if meshes[a].projectionMethod == Mesh.ProjectionMethod.Inflate:
+                mesh = hierarchy.unfoldedActor.GetMapper().GetInput()
+                mesh = util.smoothMesh(mesh,meshes[a].mesh,iterations=15,relaxation=0.1)
+                poly = mesh
 
-        append = vtk.vtkAppendPolyData()
-        clean = vtk.vtkCleanPolyData()
+            elif meshes[a].projectionMethod == Mesh.ProjectionMethod.Cube:
+                poly = util.projectMeshToBounds(hierarchy.unfoldedActor.GetMapper().GetInput())
 
-        for a in actorList:
-            append.AddInputData(a.GetMapper().GetInput())
-
-        clean.SetInputConnection(append.GetOutputPort())
-        clean.Update()
-
-        return clean.GetOutput()
-
-    ##For each loaded structure shrinkwrap the global paper mesh onto them
-    def createDedicatedMeshes(self,inflateStrucList,actorList):
-
-        for a in range(len(actorList)):
-
-            if inflateStrucList[a]:
-
-                mesh = self.tempPaperActor.GetMapper().GetInput()
-
-                poly = util.shrinkWrap(mesh, actorList[a].GetMapper().GetInput(),False)
-                #poly = util.smoothMesh(mesh,actorList[a].GetMapper().GetInput(),20,0.1)
-
-            else:
-                poly = self.tempPaperActor.GetMapper().GetInput()
+            elif meshes[a].projectionMethod == Mesh.ProjectionMethod.Clipping:
+                poly = hierarchy.unfoldedActor.GetMapper().GetInput()
 
             mapper = vtk.vtkPolyDataMapper()
             mapper.SetInputData(poly)
@@ -153,21 +90,17 @@ class MeshProcessing():
             actor = vtk.vtkActor()
             actor.SetMapper(mapper)
 
-            self.dedicatedPaperMeshes.append(actor)
+            meshes[a].projectionActor = actor
 
-    ##Imports a previous unfolded mesh, with hardcodet filename, could be changed todo.
-    def importUnfoldedMesh(self, name, boolReturn = False):
-
-        importer = vtk.vtkOBJReader()
-
-        #hardcodet file path todo
+    def importUnfoldedMesh(self, name):
+        '''
+        Imports a previous unfolded .obj mesh.
+        :param name: The name of the mesh without file extension.
+        :return:
+        '''
         filename = os.path.join(self.dirname, "../out/3D/unfolded/"+name+".obj")
-        importer.SetFileName(filename)
+        mesh = util.readObj(filename)
 
-        importer.Update()
-        mesh = importer.GetOutput()
-
-        mesh = self.shiftUVsToOrigin(mesh)
         mesh = self.normalizeUV(mesh)
         mesh = self.calcMeshNormals(mesh)
 
@@ -180,11 +113,17 @@ class MeshProcessing():
         actor.GetProperty().BackfaceCullingOn()
         actor.GetProperty().SetOpacity(0.5)
 
-        if not boolReturn:
-            self.tempPaperActor = actor
         return actor
 
     def normalizeUV(self,mesh):
+        '''
+        Normalizes the UVs of the given mesh while keeping the ratio between U and V coordinates.
+        :param mesh:
+        :return: mesh with normalized uvs.
+        '''
+
+        mesh = self.shiftUVsToOrigin(mesh)
+
         textureCoordinates = mesh.GetPointData().GetTCoords()
         newTCoords = vtk.vtkFloatArray()
         newTCoords.SetNumberOfComponents(2)
@@ -202,6 +141,13 @@ class MeshProcessing():
         return mesh
 
     def getMinMaxUV(self,mesh, axis = False):
+        '''
+        Helper method for normalizeUVs and shiftUVsToOrigin.
+        :param mesh:
+        :param axis:
+        :return: Depending on axis, either the min and max of the UVs for each axis,
+        or the global min and max.
+        '''
         textureCoordinates = mesh.GetPointData().GetTCoords()
 
         if(axis):
@@ -216,13 +162,11 @@ class MeshProcessing():
                 textureCoordinates.GetTuple(mesh.GetCell(i).GetPointId(1), uvs[1])
                 textureCoordinates.GetTuple(mesh.GetCell(i).GetPointId(2), uvs[2])
 
-                #normtemp = np.amax((np.array(uvs)))
                 umax = np.amax(np.array(uvs)[:,0])
                 umin = np.amin(np.array(uvs)[:,0])
                 vmax = np.amax(np.array(uvs)[:,1])
                 vmin = np.amin(np.array(uvs)[:,1])
 
-                #abstemp = np.amax(abs(np.array(uvs)))
                 if umax > uMax: uMax = umax
                 if umin < uMin: uMin = umin
                 if vmax > vMax: vMax = vmax
@@ -233,24 +177,26 @@ class MeshProcessing():
         else:
             gmax = 0.0
             gmin = 0.0
-            # Find maxima to normalize uvs.
             for i in range(int(textureCoordinates.GetNumberOfTuples() / 3)):
                 uvs = [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
                 textureCoordinates.GetTuple(mesh.GetCell(i).GetPointId(0), uvs[0])
                 textureCoordinates.GetTuple(mesh.GetCell(i).GetPointId(1), uvs[1])
                 textureCoordinates.GetTuple(mesh.GetCell(i).GetPointId(2), uvs[2])
 
-                #normtemp = np.amax((np.array(uvs)))
-
                 max = np.amax(np.array(uvs))
                 min = np.amin(np.array(uvs))
-                #abstemp = np.amax(abs(np.array(uvs)))
                 if max > gmax: gmax = max
                 if min < gmin: gmin = min
 
             return gmin, gmax
 
     def shiftUVsToOrigin(self,mesh):
+        '''
+        Shifts the UVs, so all coordinates are positive.
+        Necessary before normalize UVs to get constant results.
+        :param mesh:
+        :return:
+        '''
         uMin, uMax, vMin, vMax = self.getMinMaxUV(mesh, axis=True)
         textureCoordinates = mesh.GetPointData().GetTCoords()
         newTCoords = vtk.vtkFloatArray()
@@ -272,38 +218,27 @@ class MeshProcessing():
         mesh.GetPointData().SetTCoords(newTCoords)
         return mesh
 
-
     def calcMeshNormals(self,polydata):
-        #normals = vtk.vtkTriangleMeshPointNormals()
-
+        '''
+        Filles in the normals of a vtk polydata.
+        :param polydata: 
+        :return: 
+        '''''
         normals = vtk.vtkPolyDataNormals()
         normals.ComputePointNormalsOff()
         normals.ComputeCellNormalsOn()
         normals.ConsistencyOn()
-        #normals.AutoOrientNormalsOn()
-
         normals.SetInputData(polydata)
         normals.Update()
-        #return normals.GetOutput().GetPointData().GetNormals()
         return normals.GetOutput()
 
-    def project(self,inflateStruc,actorList, resolution):
-        meshes = []
-        idx = 0
-        for a in self.dedicatedPaperMeshes:
-            try:
-                mesh = (self.projector.projectPerTriangle(a,inflateStruc,actorList,idx, resolution))
-                meshes.append(mesh)
-                self.projector.createUnfoldedPaperMesh(mesh, self.tempPaperActor, idx)
-            except:
-                msgBox = QtWidgets.QMessageBox()
-                msgBox.setText("One or more meshes could not be projected.")
-                msgBox.exec()
-            idx+=1
-        return meshes
-
     def cutMeshWithPlanes(self,mesh,cutPlanes):
-
+        '''
+        Cuts a Mesh with the given planes.
+        :param mesh:
+        :param cutPlanes:
+        :return: A list containing the new mesh segments.
+        '''
         results = []
 
         for plane in cutPlanes:
@@ -334,7 +269,7 @@ class MeshProcessing():
     def booleanCGAL(self,nestedlist):
 
         mesh = self.tempPaperActor.GetMapper().GetInput()
-        #todo change to list or hierachical logic
+        #todo change to hierachy
         cutout = self.createPapermesh(nestedlist, True)
         cutPlanes = []
 
@@ -383,27 +318,17 @@ class MeshProcessing():
         #self.dedicatedPaperMeshes = [upper,lower]
 
     def unfoldTest(self, name = "upper"):
+        '''
+        Debug method to unfold a mesh int het out/3D/ folder given by its name.
+        :param name:
+        :return:
+        '''
+        inpath = os.path.join(self.dirname, "../out/3D/" + name + ".stl")
+        outpath = os.path.join(self.dirname, "../out/3D/papermesh.off")
+        util.meshioIO(inpath,outpath)
 
-        filename = os.path.join(self.dirname, "../out/3D/" + name + ".stl")
-        #        filename = os.path.join(self.dirname, "../out/3D/papermesh_cleaned.off")
-
-        mesh = meshio.read(
-            filename,  # string, os.PathLike, or a buffer/open file
-            file_format="stl",  # optional if filename is a path; inferred from extension
-        )
-
-        filename = os.path.join(self.dirname, "../out/3D/papermesh.off")
-
-        meshio.write(
-            filename,  # str, os.PathLike, or buffer/ open file
-            mesh,
-            # file_format="vtk",  # optional if first argument is a path; inferred from extension
-        )
-
-        #       print(filename)
         graph = Graph()
-
-        graph.load(filename)
+        graph.load(outpath)
         if not graph.unfold(50000, 0):
             print("failed to unfold :(")
         else:
@@ -412,24 +337,3 @@ class MeshProcessing():
             gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_" + name + ".obj")
 
             graph.save(filename, gluetabs_filename)
-
-    def decimateMesh(self,mesh):
-
-        subdivider = vtk.vtkLoopSubdivisionFilter()
-        subdivider.SetInputData(mesh)
-        subdivider.SetNumberOfSubdivisions(1)
-        subdivider.Update()
-
-        decimater = vtk.vtkDecimatePro()
-        decimater.SetInputData(subdivider.GetOutput())
-        decimater.SetTargetReduction(0.1)
-        decimater.PreserveTopologyOn()
-        decimater.Update()
-
-        quadrClustering = vtk.vtkQuadricClustering()
-        quadrClustering.SetInputData(decimater.GetOutput())
-        quadrClustering.SetNumberOfXDivisions(32)
-        quadrClustering.SetNumberOfYDivisions(32)
-        quadrClustering.SetNumberOfZDivisions(4)
-        quadrClustering.Update()
-        return quadrClustering.GetOutput()
