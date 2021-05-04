@@ -1,33 +1,32 @@
 import vtkmodules.all as vtk
-import numpy as np
 import os
-import meshProcessing
-import imageProcessing
+from meshProcessing import MeshProcessing
+from projector import Projector
+from imageProcessing import ImageProcessor
+import util
 from mu3d.mu3dpy.mu3d import Graph
-
-# Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
 from src.hierarchicalMesh import HierarchicalMesh
-
+from PyQt5 import QtWidgets
 
 class Organizer():
-
+    '''
+    Class responsible for Rendering Tasks, I/O and forwarding method calls to ImageProcessing and MeshProcessing.
+    '''
     def __init__(self,ren):
         self.ren = ren
-        # todo move this somewhere meaningful
-        self.hierarchical_mesh_anchor = HierarchicalMesh(None, None, "Empty")
 
     dirname = os.path.dirname(__file__)
 
     actorList = []
-    #TODO change when improving nested system
-    nestedList = []
     renList = []
 
     height = 2000
     width = 2000
 
-    meshProcessor = meshProcessing.MeshProcessing()
-    imageProcessor = imageProcessing.ImageProcessor(height,width)
+    meshProcessor = MeshProcessing()
+    projector = Projector()
+    imageProcessor = ImageProcessor(height,width)
+
 
     camera = vtk.vtkCamera()
 
@@ -55,6 +54,10 @@ class Organizer():
     ctf.AddHSVPoint(100.0, 1.0, 1.0, 1.0)
 
     def setUp(self):
+        '''
+        initial settings for the renderer and the camera.
+        :return:
+        '''
         # Camera
         self.camera.SetViewUp(0, 0, 1)
         self.camera.SetPosition(0, -600, 0)
@@ -69,6 +72,10 @@ class Organizer():
         self.ren.ResetCamera()
 
     def resetCamera(self):
+        '''
+        reset the camera.
+        :return:
+        '''
         self.camera.SetViewUp(0, 0, 1)
         self.camera.SetPosition(0, -600, 0)
         self.camera.SetFocalPoint(0, 0, 0)
@@ -80,7 +87,13 @@ class Organizer():
         self.ren.ResetCamera()
 
     def onMultiply(self,depthPeeling,filter,brighten):
-
+        '''
+        Forwarding the rendering and color multiplication of the loaded structures.
+        :param depthPeeling:
+        :param filter:
+        :param brighten:
+        :return:
+        '''
         imageActor = vtk.vtkImageActor()
 
         #firsttime multiplication
@@ -90,8 +103,7 @@ class Organizer():
         self.resultRen.RemoveActor(imageActor)
         self.ren.SetViewport(self.noViewport)
         self.resultRen.SetViewport(self.fullViewport)
-
-        result = self.imageProcessor.multiplyingActors(depthPeeling,filter,brighten,self.actorList,self.camera,self.height,self.width,self.occlusion,self.numberOfPeels)
+        result = self.imageProcessor.multiplyingActors(depthPeeling,filter,brighten,self.hierarchical_mesh_anchor.getAllMeshes(),self.camera,self.height,self.width,self.occlusion,self.numberOfPeels)
 
         imageActor = vtk.vtkImageActor()
         imageActor.GetMapper().SetInputData(result)
@@ -101,19 +113,19 @@ class Organizer():
         self.resultRen.Render()
 
         filename = os.path.join(self.dirname, "../out/2D/multiply{}.png".format(self.sessionMultiplySaves))
-        writer = vtk.vtkPNGWriter()
-        writer.SetFileName(filename)
-        writer.SetInputData(result)
-        writer.Write()
+        util.writeImage(result,filename)
 
         self.sessionMultiplySaves += 1
 
-    #multiplys the created unfoldings of the structures into a single unfolded texture.
     def brightenMultiplication(self):
+        '''
+        Multiplies the created unfolding images of the structures into a single unfolded texture.
+        :return:
+        '''
         reader = vtk.vtkPNGReader()
         imgList=[]
 
-        for i in range(len(self.actorList)):
+        for i in range(len(self.hierarchical_mesh_anchor.getAllMeshes())):
 
             filename = os.path.join(self.dirname, "../out/2D/unfolding{}.png".format(i))
 
@@ -142,33 +154,50 @@ class Organizer():
         writer.SetFileName(filename)
         writer.SetInputConnection(resultCast.GetOutputPort())
         writer.Write()
+        self.finish()
 
-    def changeColor(self,value,idx):
-        self.actorList[idx].GetProperty().SetColor(value)
+    def addMesh(self, mesh, parent, childId):
+        '''
+        Method that manages adding a mesh to the hierarchy by either:
+        Create a hierarchical mesh and initialize the tree,
+        create a hierarchical mesh and add as child,
+        append a mesh to level 0,
+        append a mesh to a child.
 
-    def changeOpacity(self, value, idx):
-        self.actorList[idx].GetProperty().SetOpacity(value)
+        :param mesh: the new mesh.
+        :param parent: if given, the parent mesh.
+        :param childId: the list id of the child to which the mesh is appended.
+        :return: the hierarchical mesh that was created/updated.
+        '''
+        self.ren.RemoveAllViewProps()
 
-    def addActor(self, name, boolNested=False):
-        stlReader = vtk.vtkSTLReader()
-        stlReader.SetFileName(name)# + ".stl")
-
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputConnection(stlReader.GetOutputPort())
-
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(self.ctf.GetColor(0.0))
-        actor.GetProperty().SetOpacity(0.75)
-        if not boolNested:
-            self.actorList.append(actor)
+        if hasattr(self,"hierarchical_mesh_anchor"):
+            if parent:
+                # append as new child
+                if childId < 0 or len(parent.children) == 0:
+                    hierarchicalMesh = HierarchicalMesh(parent,mesh)
+                    parent.children.append(hierarchicalMesh)
+                    self.hierarchical_mesh_anchor.renderStructures(self.ren)
+                    self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
+                    return hierarchicalMesh
+                # append to the meshes of a child
+                else:
+                    parent.children[childId].appendMesh(mesh)
+                    self.hierarchical_mesh_anchor.renderStructures(self.ren)
+                    self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
+                    return parent.children[childId]
+            # add at level 0
+            else:
+                self.hierarchical_mesh_anchor.appendMesh(mesh)
+                self.hierarchical_mesh_anchor.renderStructures(self.ren)
+                self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
+                return self.hierarchical_mesh_anchor
+        # initialize Tree
         else:
-            #TODO real obj based system...
-            self.nestedList.append(actor)
-
-        self.hierarchical_mesh_anchor.add(actor, name)
-
-        self.ren.AddActor(actor)
+            self.hierarchical_mesh_anchor = HierarchicalMesh(None,mesh)
+            self.hierarchical_mesh_anchor.renderStructures(self.ren)
+            self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
+            return self.hierarchical_mesh_anchor
 
     def draw_level(self, level):
         self.hierarchical_mesh_anchor.render(level, self.ren)
@@ -189,6 +218,11 @@ class Organizer():
         self.camera.SetDistance(dis)
 
     def swapViewports(self, resultRenMaxView):
+        '''
+        Swaps between the normal renderer self. ren and self.resultRen.
+        :param resultRenMaxView:
+        :return:
+        '''
         if resultRenMaxView:
             self.ren.SetViewport(self.noViewport)
             self.resultRen.SetViewport(self.fullViewport)
@@ -196,41 +230,65 @@ class Organizer():
             self.ren.SetViewport(self.fullViewport)
             self.resultRen.SetViewport(self.noViewport)
 
-    def createPaperMeshPass(self, iterations ,inflateStruc):
-        mainGraph = Graph()
-        actor = self.meshProcessor.createPapermesh(self.actorList)
-        success = self.meshProcessor.mu3dUnfoldPaperMesh(actor, mainGraph, iterations)
-        if success:
-            #should be removed again when a new paperactor is created todo
-            self.ren.AddActor(self.meshProcessor.tempPaperActor)
-            self.meshProcessor.createDedicatedMeshes(inflateStruc, self.actorList)
+    def unfoldPaperMeshPass(self, iterations):
+        '''
+        Forwards the unfold call to the hierarchical tree.
+        :param iterations: Iterations of the mu3d unfolding.
+        :return:
+        '''
+        self.hierarchical_mesh_anchor.unfoldWholeHierarchy(self.meshProcessor,iterations)
 
-        #actor.GetProperty().SetOpacity(0.5)
-        #self.ren.AddActor(actor)
-        #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
-        #self.meshProcessor.createDedicatedMeshes(inflateStruc,self.actorList)
-        #actor = self.meshProcessor.importUnfoldedMesh()
-        #actor.GetProperty().SetOpacity(0.5)
-        #self.ren.AddActor(actor)
+    def importUnfoldedMeshPass(self, name):
+        #deprecated
+        self.hierarchical_mesh_anchor.unfoldedActor = self.meshProcessor.importUnfoldedMesh(name)
+        self.meshProcessor.createDedicatedMeshes(self.hierarchical_mesh_anchor)
 
-    def createDedicatedPaperMeshesPass(self,inflateStrucList):
-        self.meshProcessor.createDedicatedMeshes(inflateStrucList,self.actorList)
+    def project(self, hierarchy, resolution):
+        '''
+        Calls the projectPerTriangle() and createUnfoldedPaperMesh() from the projector class.
+        :param hierarchy:
+        :param resolution:
+        :return:
+        '''
+        resultMeshes = []
+        idx = 0
+        meshes = hierarchy.getAllMeshes(asActor=False)
+        for a in meshes:
+            try:
+                if a.hierarchicalMesh.getLevel() > 0: raise Exception("Projection for nested meshes not implemented")
+                mesh = (self.projector.projectPerTriangle(a.projectionActor, a.getActor(), idx, resolution))
+                resultMeshes.append(mesh)
+                self.projector.createUnfoldedPaperMesh(mesh, a.hierarchicalMesh.unfoldedActor, idx)
+            except Exception as e:
+                msgBox = QtWidgets.QMessageBox()
+                msgBox.setText(str(e))
+                msgBox.exec()
+            idx += 1
+        return resultMeshes
 
-    def importUnfoldedMeshPass(self, inflateStruc):
-        #self.ren.RemoveActor(self.ren.GetActors().GetLastActor())
-
-        actor = self.meshProcessor.importUnfoldedMesh()
-        actor.GetProperty().SetOpacity(0.5)
-        self.ren.AddActor(actor)
-        self.meshProcessor.createDedicatedMeshes(inflateStruc,self.actorList)
-
-    def projectPass(self, inflateStruc = None, resolution = [500,500]):
-
-        self.renderers = self.setUpResultRenderers(self.camera)
+    def projectPass(self,resolution = [500,500]):
+        #todo projection for whole hierarchy not just level zero
         self.ren.SetViewport([0.0, 0.0, 0.0, 0.0])
-        actors = self.meshProcessor.project(inflateStruc,self.actorList, resolution)
+        actors = self.project(self.hierarchical_mesh_anchor, resolution)
         count = 0
-        for ren in self.renderers:
+
+        filename = os.path.join(self.dirname, "../out/2D/unfolding{}.png".format(count))
+        readerFac = vtk.vtkImageReader2Factory()
+        imageReader = readerFac.CreateImageReader2(filename)
+        imageReader.SetFileName(filename)
+        texture = vtk.vtkTexture()
+        texture.SetInputConnection(imageReader.GetOutputPort())
+
+        self.hierarchical_mesh_anchor.unfoldedActor.SetTexture(texture)
+        self.hierarchical_mesh_anchor.unfoldedActor.Modified()
+
+        util.writeObj(self.hierarchical_mesh_anchor.unfoldedActor.GetMapper().GetInput(), "tempPaper")
+
+        self.renderers = self.setUpResultRenderers(self.camera,len(actors)+1)
+        self.ren.GetRenderWindow().AddRenderer(self.renderers[0])
+        self.renderers[0].AddActor(self.hierarchical_mesh_anchor.unfoldedActor)
+
+        for actor in actors:
             filename = os.path.join(self.dirname, "../out/2D/texture/texture{}.png".format(count))
             readerFac = vtk.vtkImageReader2Factory()
             imageReader = readerFac.CreateImageReader2(filename)
@@ -238,16 +296,21 @@ class Organizer():
             texture = vtk.vtkTexture()
             texture.SetInputConnection(imageReader.GetOutputPort())
 
-            self.ren.GetRenderWindow().AddRenderer(ren)
+            self.ren.GetRenderWindow().AddRenderer(self.renderers[count+1])
             actors[count].GetProperty().SetColor([1.0,1.0,1.0])
             actors[count].SetTexture(texture)
-            ren.AddActor(actors[count])
+            self.renderers[count+1].AddActor(actors[count])
             count += 1
 
+        actors.insert(0,self.hierarchical_mesh_anchor.unfoldedActor)
         self.dedicatedPaperMeshes = actors
         return self.renderers
 
     def finish(self):
+        '''
+        Loads the final multiplied texture and assigns it to the papermesh.
+        :return:
+        '''
         if hasattr(self, "renderers"):
             for ren in self.renderers:
                 ren.SetViewport(self.noViewport)
@@ -260,45 +323,55 @@ class Organizer():
         texture = vtk.vtkTexture()
         texture.SetInputConnection(imageReader.GetOutputPort())
 
-        self.meshProcessor.tempPaperActor.SetTexture(texture)
+        self.hierarchical_mesh_anchor.unfoldedActor.SetTexture(texture)
 
         self.ren.RemoveAllViewProps()
-        self.meshProcessor.tempPaperActor.GetProperty().SetOpacity(1.0)
-        self.ren.AddActor(self.meshProcessor.tempPaperActor)
+        self.hierarchical_mesh_anchor.unfoldedActor.GetProperty().SetOpacity(1.0)
+        self.ren.AddActor(self.hierarchical_mesh_anchor.unfoldedActor)
 
-    def setUpResultRenderers(self,camera):
-        rendererMesh1 = vtk.vtkRenderer()
-        rendererMesh1.SetActiveCamera(camera)
-        rendererMesh1.SetViewport([0.0, 0.0, 0.33, 1.0])
-        rendererMesh1.SetBackground(255.0,255.0,255.0)
-        rendererMesh2 = vtk.vtkRenderer()
-        rendererMesh2.SetActiveCamera(camera)
-        rendererMesh2.SetViewport([0.33, 0.0, 0.66, 1.0])
-        rendererMesh2.SetBackground(255.0,255.0,255.0)
-        rendererMesh3 = vtk.vtkRenderer()
-        rendererMesh3.SetActiveCamera(camera)
-        rendererMesh3.SetViewport([0.66, 0.0, 1.0, 1.0])
-        rendererMesh3.SetBackground(255.0,255.0,255.0)
+    def setUpResultRenderers(self,camera,count):
+        '''
+        sets up the horizontally concatenated renderers for each projected structure.
+        #todo, set up renderers for nested structures below level zero.
+        :param camera:
+        :param count:
+        :return:
+        '''
+        renderers = []
 
-        return [rendererMesh1, rendererMesh2, rendererMesh3]
+        width = 1.0 / count
+        right = 0.0
+        left = width
 
+        for i in range(count):
+
+            render = vtk.vtkRenderer()
+            render.SetActiveCamera(camera)
+            render.SetViewport([right, 0.0, left, 1.0])
+            render.SetBackground(255.0,255.0,255.0)
+            renderers.append(render)
+            right += width
+            left += width
+
+        return renderers
+
+    '''
     def onFlatten(self,pickerIds, inflateStruc):
         for ren in self.renderers:
             self.ren.GetRenderWindow().RemoveRenderer(ren)
 
         self.meshProcessor.meshInteractor.improveCells(pickerIds)
-        self.projectPass(inflateStruc)
+        self.projectPass()
 
     def onGenerateColorMesh(self, renId, ids):
         actor = self.meshProcessor.meshInteractor.generateColorMesh(renId,ids)
         if self.renderers[renId].GetActors().GetNumberOfItems() > 1:
             self.renderers[renId].RemoveActor(self.renderers[renId].GetActors().GetLastActor())
         self.renderers[renId].AddActor(actor)
+    '''
 
     def boolean(self):
-        boolGraph = Graph()
-        self.meshProcessor.booleanTrimesh(self.ren,boolGraph,self.actorList,self.nestedList)
+        self.meshProcessor.booleanCGAL(self.nestedList)
 
     def onUnfoldTest(self):
-        self.meshProcessor.unfoldTest(name="unfoldTest4")
-        #self.binder.unfoldTest()
+        self.meshProcessor.unfoldTest(name="lower")

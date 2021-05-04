@@ -24,7 +24,7 @@ class ImageProcessor():
     canvas_source.FillBox(0, width-1, 0, height-1)
     canvas_source.Update()
 
-    #Main method to muliply structurs
+    #Main method to muliply structures
     def multiplyingActors(self,dethPeeling,filter,brightBool,actorList,camera,height,width,occlusion,numberOfPeels):
 
         self.renList.clear()
