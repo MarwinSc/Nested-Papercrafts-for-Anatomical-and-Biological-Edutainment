@@ -16,6 +16,3 @@ def hull_of_mesh(file_in, file_out):
     tmp.convex_hull_of_mesh.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
     tmp.convex_hull_of_mesh.restype = ctypes.c_bool
     return tmp.convex_hull_of_mesh(file_in, file_out)
-
-a = hull_of_mesh(b"C:/Users/thors/Desktop/deformed.off", b"C:/Users/thors/Desktop/deformed_hull.off")
-print(a)
