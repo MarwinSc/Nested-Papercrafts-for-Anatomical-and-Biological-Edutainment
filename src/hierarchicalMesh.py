@@ -194,6 +194,7 @@ class HierarchicalMesh(object):
         :param iterations:
         :return:
         '''
+        self.writePapermeshStlAndOff()
         self.graph = Graph()
         unfoldedActor = meshProcessor.mu3dUnfoldPaperMesh(self.mesh, self.graph, iterations)
         if unfoldedActor:
