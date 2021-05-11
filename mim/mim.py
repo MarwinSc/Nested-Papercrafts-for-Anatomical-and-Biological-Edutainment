@@ -16,3 +16,15 @@ def hull_of_mesh(file_in, file_out):
     tmp.convex_hull_of_mesh.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
     tmp.convex_hull_of_mesh.restype = ctypes.c_bool
     return tmp.convex_hull_of_mesh(file_in, file_out)
+
+
+def simplify_mesh(file_in, file_out, simplification_rate):
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    tmp = ctypes.WinDLL(dir_path + "/mim.dll")
+    tmp.simplify_mesh.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float]
+    tmp.simplify_mesh.restype = ctypes.c_bool
+    return tmp.simplify_mesh(file_in, file_out, simplification_rate)
+
+# a = hull_of_mesh(b"C:/Users/thors/Desktop/heart.off", b"C:/Users/thors/Desktop/heart_hull.off")
+# b = simplify_mesh(b"C:/Users/thors/Desktop/heart_hull.off", b"C:/Users/thors/Desktop/heart_hull_simplified.off", 0.5)
+# c = simplify_mesh(b"C:/Users/thors/Desktop/heart_hull.off", b"C:/Users/thors/Desktop/heart_hull_simplified_1.off", 0.01)

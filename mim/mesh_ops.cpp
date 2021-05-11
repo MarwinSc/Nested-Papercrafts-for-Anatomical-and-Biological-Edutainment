@@ -13,6 +13,8 @@
 #include <fstream>
 #include <limits>
 #include "mesh_ops.h"
+#include <CGAL/Surface_mesh_simplification/edge_collapse.h>
+#include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Count_stop_predicate.h>
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
 typedef K::Point_3 Point;
@@ -105,6 +107,25 @@ bool __stdcall convex_hull_of_mesh(char* mesh, char* hull_file) {
 		std::cout << "failed to save" << std::endl;
 		return false;
 	}
+
+	return true;
+}
+
+bool __stdcall simplify_mesh(char* mesh, char* simplified_mesh, float simplification_rate) {
+	Polyhedron poly = get_polyhedron(mesh);
+	const size_t edge_count = (poly.size_of_halfedges() / 2.0f) * simplification_rate;
+
+	CGAL::Surface_mesh_simplification::Count_stop_predicate<Polyhedron> stop(edge_count);
+	std::cout << "Simplification to " << edge_count << " (" << simplification_rate << "%) number of edges" << std::endl;
+	int r = CGAL::Surface_mesh_simplification::edge_collapse(poly, stop, CGAL::parameters::vertex_index_map(get(CGAL::vertex_external_index, poly))
+		.halfedge_index_map(get(CGAL::halfedge_external_index, poly)));
+	std::cout << "\nFinished!\n" << r << " edges removed.\n"
+		<< (poly.size_of_halfedges() / 2) << " final edges.\n";
+
+	std::ofstream os(simplified_mesh);
+	os.precision(15);
+	os << poly;
+	os.close();
 
 	return true;
 }
