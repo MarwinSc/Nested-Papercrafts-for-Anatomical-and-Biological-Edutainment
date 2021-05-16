@@ -10,8 +10,8 @@ class HierarchicalMesh(object):
     """
     Represents a hierarchy of meshes. Tree structure.
     Children linked to parents and parents to children.
-    Each HierarchicalMesh is associated with one or multiple Mesh instances
-    and a Papermesh.
+    A hierarchical mesh is associated with a paper mesh.
+    Additionally it can have n-meshes that are projected on a paper mesh.
     """
     dirname = os.path.dirname(__file__)
 
