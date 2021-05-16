@@ -1,3 +1,6 @@
 [submodule "mu3d"]
 	path = mu3d
 	url = https://github.com/AnimaNoProject/mu3d
+[submodule "viewpointselection"]
+	path = viewpointselection
+	url = https://gitlab.cg.tuwien.ac.at/rraidou/viewpointselection.git
