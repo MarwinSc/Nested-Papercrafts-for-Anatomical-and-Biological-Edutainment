@@ -4,6 +4,7 @@ from mim.mim import meshB_inside_meshA
 import vtkmodules.all as vtk
 import util
 from mu3d.mu3dpy.mu3d import Graph
+import operator
 
 class HierarchicalMesh(object):
     """
@@ -14,12 +15,36 @@ class HierarchicalMesh(object):
     """
     dirname = os.path.dirname(__file__)
 
+    def __init__(self, parent, mesh, filename):
+        """
+        Initialises a hierarchical mesh.
+        :param self: this
+        :param mesh: mesh associated with this
+        :param name: name of the mesh
+        :return: None
+        """
+        self.mesh = mesh  # paper mesh
+        self.children = []  # chain of paper meshes (inside of this paper mesh)
+        self.projections = []  # add structures that are projected on this paper mesh here
+
+        self.parent = parent  # parent paper mesh
+        if parent is None:
+            self.name = filename
+        else:
+            self.name = filename[filename.rfind('/') + 1:]
+            self.offname = filename[:filename.rfind('.')] + ".off"
+            print(self.name, "added to ", parent.name)
+
+        self.file = filename
+        self.dirname = os.path.dirname(__file__)
+
+    '''
     def __init__(self, parent, meshes):
         """
         Initialises a hierarchical mesh.
         :param self: this
         :param parent: parent hierarchical mesh.
-        :param mesh: mesh or list of meshes associated with this level
+        :param meshes: mesh or list of meshes associated with this level
         :return: None
         """
 
@@ -42,7 +67,7 @@ class HierarchicalMesh(object):
             print(self.name, "added to ", parent.name)
 
         self.file = filename
-
+    '''
 
     def render(self, level, renderer):
         """
@@ -63,7 +88,7 @@ class HierarchicalMesh(object):
                 self.mesh.SetVisibility(False)
 
             for child in self.children:
-                child.render(level-1, renderer)
+                child.render(level - 1, renderer)
 
     def inside(self, file):
         """
@@ -74,7 +99,7 @@ class HierarchicalMesh(object):
         meshB = file[:file.rfind('.')] + ".off"
         return meshB_inside_meshA(bytes(self.offname, 'utf-8'), bytes(meshB, 'utf-8'))
 
-    #todo problem with appending meshes to the same hierarchical mesh.
+    # TODO: at best here off file needs to exist!!
     def add(self, mesh, filename):
         """
         Adds the given mesh to the hierarchy
@@ -91,14 +116,18 @@ class HierarchicalMesh(object):
         # if this object does not have a mesh
         # it's top level therefore we can add any mesh here
         # if it was not added to any children
-        # or we are nto top level and it's inside the current mesh
+        # or we are not top level and it's inside the current mesh
         if self.mesh is None or self.inside(filename):
             # this means any of this children is potentially a child of the new mesh
             temp = self.children.copy()
             self.children.clear()
-            self.children.append(HierarchicalMesh(self, mesh))
+            self.children.append(HierarchicalMesh(self, mesh, filename))
             for tmp_child in temp:
-                if not self.children[0].add(tmp_child.mesh, tmp_child.file):
+                filename_off = filename[:filename.rfind('.')] + ".off" # here we need the off file to check the hierarchy
+                if meshB_inside_meshA(bytes(filename_off, 'utf-8'), bytes(tmp_child.offname, 'utf-8')):
+                    self.children[0].children.append(tmp_child)
+                    tmp_child.parent = self.children[0]
+                else:
                     self.children.append(tmp_child)
 
             return True
@@ -115,7 +144,7 @@ class HierarchicalMesh(object):
             final_mesh = trimesh.load(self.file)
             for child in self.children:
                 tri_child = trimesh.load(child.file)
-                #final_mesh = final_mesh.difference(tri_child, engine='blender')
+                # final_mesh = final_mesh.difference(tri_child, engine='blender')
                 final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
 
             filename = os.path.join(self.dirname, "../out/3D/differenced_" + self.name)
@@ -125,7 +154,7 @@ class HierarchicalMesh(object):
         for child in self.children:
             child.recursive_difference()
 
-    def appendMesh(self,mesh):
+    def appendMesh(self, mesh):
         '''
         Append a mesh-object to the self.meshes list and update the papermesh.
         :param mesh:
@@ -134,7 +163,7 @@ class HierarchicalMesh(object):
         self.meshes.append(mesh)
         self.mesh = self.generatePaperMesh()
 
-    def renderStructures(self,renderer):
+    def renderStructures(self, renderer):
         '''
         Renders all loaded structures in the hierarchy to the given renderer.
         :param renderer:
@@ -145,7 +174,7 @@ class HierarchicalMesh(object):
         for child in self.children:
             child.renderStructures(renderer)
 
-    def renderPaperMeshes(self,renderer):
+    def renderPaperMeshes(self, renderer):
         '''
         Renders all papermeshes in the hierarchy to the given renderer.
         :param renderer:
@@ -172,7 +201,7 @@ class HierarchicalMesh(object):
         triangleFilter.Update()
         mesh = util.subdivideMesh(triangleFilter.GetOutput())
         mesh = util.cleanMesh(mesh)
-        mesh = util.shrinkWrap(mesh,polysAppended)
+        mesh = util.shrinkWrap(mesh, polysAppended)
         self.papermesh = util.offsetMesh(mesh)
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(self.papermesh)
@@ -201,7 +230,7 @@ class HierarchicalMesh(object):
             self.unfoldedActor = unfoldedActor
             meshProcessor.createDedicatedMeshes(self)
 
-    def getAllMeshes(self, asActor = True):
+    def getAllMeshes(self, asActor=True):
         '''
         :param asActor: if true the meshes are returned as vtk actors, if false as Mesh-objects.
         :return: All meshes of this level and below as vtk actors or Mesh-objects.
@@ -225,7 +254,7 @@ class HierarchicalMesh(object):
         util.writeStl(self.papermesh, name)
         inpath = os.path.join(self.dirname, "../out/3D/papermeshLevel{}.stl".format(self.getLevel()))
         outpath = os.path.join(self.dirname, "../out/3D/papermeshLevel{}.off".format(self.getLevel()))
-        util.meshioIO(inpath,outpath)
+        util.meshioIO(inpath, outpath)
         return inpath
 
     def toString(self):
@@ -247,12 +276,30 @@ class HierarchicalMesh(object):
         """
         parent = self.parent
         level = 0
+        print("level of ", self.name)
         while parent is not None:
+            print(parent.name)
             parent = parent.parent
             level += 1
         return level
 
+    def toLevelDict(self, hierarchical_dict):
+        """
+        :return:
+        """
+        current_level = self.getLevel()
+        print(current_level, self.file)
+        if current_level not in hierarchical_dict:
+            hierarchical_dict[current_level] = []
 
+        hierarchical_dict[current_level].append(self.file)
 
+        for child in self.children:
+            child.toLevelDict(hierarchical_dict)
 
+        return hierarchical_dict
 
+    def toList(self):
+        level_dict = self.toLevelDict({})
+        del level_dict[0]
+        return [v for k, v in level_dict.items()]

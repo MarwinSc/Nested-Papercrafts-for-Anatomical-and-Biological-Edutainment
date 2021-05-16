@@ -24,7 +24,3 @@ def simplify_mesh(file_in, file_out, simplification_rate):
     tmp.simplify_mesh.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_float]
     tmp.simplify_mesh.restype = ctypes.c_bool
     return tmp.simplify_mesh(file_in, file_out, simplification_rate)
-
-# a = hull_of_mesh(b"C:/Users/thors/Desktop/heart.off", b"C:/Users/thors/Desktop/heart_hull.off")
-# b = simplify_mesh(b"C:/Users/thors/Desktop/heart_hull.off", b"C:/Users/thors/Desktop/heart_hull_simplified.off", 0.5)
-# c = simplify_mesh(b"C:/Users/thors/Desktop/heart_hull.off", b"C:/Users/thors/Desktop/heart_hull_simplified_1.off", 0.01)

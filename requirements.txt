@@ -4,3 +4,7 @@ projector~=0.1.1
 trimesh~=3.9.13
 meshio~=4.3.12
 Pillow~=8.2.0
+vtk~=9.0.1
+palettable~=3.3.0
+matplotlib~=3.4.2
+pybullet~=3.1.7
