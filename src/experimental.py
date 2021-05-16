@@ -32,4 +32,12 @@ actor.SetMapper(mapper)
 
 anchor.add(actor, "../meshes/outer_mesh.stl")
 
+stlReader.SetFileName("../meshes/inner_mesh.stl")
+mapper = vtk.vtkPolyDataMapper()
+mapper.SetInputConnection(stlReader.GetOutputPort())
+actor = vtk.vtkActor()
+actor.SetMapper(mapper)
+
+anchor.add(actor, "../meshes/inner_mesh.stl")
+
 print(anchor.toList())
