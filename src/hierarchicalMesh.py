@@ -292,7 +292,7 @@ class HierarchicalMesh(object):
         if current_level not in hierarchical_dict:
             hierarchical_dict[current_level] = []
 
-        hierarchical_dict[current_level].append(self.file)
+        hierarchical_dict[current_level].append(self.mesh)
 
         for child in self.children:
             child.toLevelDict(hierarchical_dict)
