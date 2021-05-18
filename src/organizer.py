@@ -7,6 +7,7 @@ import util
 from mu3d.mu3dpy.mu3d import Graph
 from src.hierarchicalMesh import HierarchicalMesh
 from PyQt5 import QtWidgets
+import time
 
 class Organizer():
     '''
@@ -52,6 +53,8 @@ class Organizer():
     ctf.AddHSVPoint(50.0, 0.5, 1.0, 1.0)
     ctf.AddHSVPoint(75.0, 0.75, 1.0, 1.0)
     ctf.AddHSVPoint(100.0, 1.0, 1.0, 1.0)
+
+    hierarchical_mesh_anchor = HierarchicalMesh(None,None,meshProcessor)
 
     def setUp(self):
         '''
@@ -155,9 +158,9 @@ class Organizer():
         writer.SetInputConnection(resultCast.GetOutputPort())
         writer.Write()
         self.finish()
-
+    '''
     def addMesh(self, mesh, parent, childId):
-        '''
+        
         Method that manages adding a mesh to the hierarchy by either:
         Create a hierarchical mesh and initialize the tree,
         create a hierarchical mesh and add as child,
@@ -168,14 +171,14 @@ class Organizer():
         :param parent: if given, the parent mesh.
         :param childId: the list id of the child to which the mesh is appended.
         :return: the hierarchical mesh that was created/updated.
-        '''
+        
         self.ren.RemoveAllViewProps()
 
         if hasattr(self,"hierarchical_mesh_anchor"):
             if parent:
                 # append as new child
                 if childId < 0 or len(parent.children) == 0:
-                    hierarchicalMesh = HierarchicalMesh(parent,mesh)
+                    hierarchicalMesh = HierarchicalMesh(parent,mesh,self.meshProcessor)
                     parent.children.append(hierarchicalMesh)
                     self.hierarchical_mesh_anchor.renderStructures(self.ren)
                     self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
@@ -194,10 +197,24 @@ class Organizer():
                 return self.hierarchical_mesh_anchor
         # initialize Tree
         else:
-            self.hierarchical_mesh_anchor = HierarchicalMesh(None,mesh)
+            self.hierarchical_mesh_anchor = HierarchicalMesh(None,mesh,self.meshProcessor)
             self.hierarchical_mesh_anchor.renderStructures(self.ren)
             self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
             return self.hierarchical_mesh_anchor
+    '''
+    def addMesh(self, meshes):
+        newHierarchicalMesh = HierarchicalMesh(None,meshes,self.meshProcessor)
+        self.hierarchical_mesh_anchor.add(newHierarchicalMesh)
+        return newHierarchicalMesh
+
+    def directImportPapermesh(self, mesh):
+        hm = HierarchicalMesh(None,None,self.meshProcessor)
+        hm.papermesh = mesh.getActor().GetMapper().GetInput()
+        hm.mesh = mesh.getActor()
+        hm.meshes.append(mesh)
+        hm.setName(hm.writePapermeshStlAndOff("Temp"))
+        self.hierarchical_mesh_anchor.add(hm)
+        return hm
 
     def draw_level(self, level):
         self.hierarchical_mesh_anchor.render(level, self.ren)
@@ -236,12 +253,17 @@ class Organizer():
         :param iterations: Iterations of the mu3d unfolding.
         :return:
         '''
-        self.hierarchical_mesh_anchor.unfoldWholeHierarchy(self.meshProcessor,iterations)
+        self.hierarchical_mesh_anchor.unfoldWholeHierarchy(iterations)
 
     def importUnfoldedMeshPass(self, name):
         #deprecated
         self.hierarchical_mesh_anchor.unfoldedActor = self.meshProcessor.importUnfoldedMesh(name)
         self.meshProcessor.createDedicatedMeshes(self.hierarchical_mesh_anchor)
+
+    def importPapermeshAnchor(self):
+        #deprecated
+        filename = os.path.join(self.dirname, "../out/3D/papermesh.obj")
+        self.hierarchical_mesh_anchor.papermesh = util.readObj(filename)
 
     def project(self, hierarchy, resolution):
         '''
@@ -255,7 +277,8 @@ class Organizer():
         meshes = hierarchy.getAllMeshes(asActor=False)
         for a in meshes:
             try:
-                if a.hierarchicalMesh.getLevel() > 0: raise Exception("Projection for nested meshes not implemented")
+                #todo projection for whole hierarchy not just level one child one
+                if a.hierarchicalMesh.getLevel() > 1: raise Exception("Projection for nested meshes not implemented")
                 mesh = (self.projector.projectPerTriangle(a.projectionActor, a.getActor(), idx, resolution))
                 resultMeshes.append(mesh)
                 self.projector.createUnfoldedPaperMesh(mesh, a.hierarchicalMesh.unfoldedActor, idx)
@@ -267,9 +290,11 @@ class Organizer():
         return resultMeshes
 
     def projectPass(self,resolution = [500,500]):
-        #todo projection for whole hierarchy not just level zero
+        #todo projection for whole hierarchy not just level one child one
         self.ren.SetViewport([0.0, 0.0, 0.0, 0.0])
-        actors = self.project(self.hierarchical_mesh_anchor, resolution)
+        hm = self.hierarchical_mesh_anchor.children[0]
+
+        actors = self.project(hm, resolution)
         count = 0
 
         filename = os.path.join(self.dirname, "../out/2D/unfolding{}.png".format(count))
@@ -279,14 +304,16 @@ class Organizer():
         texture = vtk.vtkTexture()
         texture.SetInputConnection(imageReader.GetOutputPort())
 
-        self.hierarchical_mesh_anchor.unfoldedActor.SetTexture(texture)
-        self.hierarchical_mesh_anchor.unfoldedActor.Modified()
 
-        util.writeObj(self.hierarchical_mesh_anchor.unfoldedActor.GetMapper().GetInput(), "tempPaper")
+
+        hm.unfoldedActor.SetTexture(texture)
+        hm.unfoldedActor.Modified()
+
+        util.writeObj(hm.unfoldedActor.GetMapper().GetInput(), "tempPaper")
 
         self.renderers = self.setUpResultRenderers(self.camera,len(actors)+1)
         self.ren.GetRenderWindow().AddRenderer(self.renderers[0])
-        self.renderers[0].AddActor(self.hierarchical_mesh_anchor.unfoldedActor)
+        self.renderers[0].AddActor(hm.unfoldedActor)
 
         for actor in actors:
             filename = os.path.join(self.dirname, "../out/2D/texture/texture{}.png".format(count))
@@ -302,12 +329,13 @@ class Organizer():
             self.renderers[count+1].AddActor(actors[count])
             count += 1
 
-        actors.insert(0,self.hierarchical_mesh_anchor.unfoldedActor)
+        actors.insert(0,hm.unfoldedActor)
         self.dedicatedPaperMeshes = actors
         return self.renderers
 
     def finish(self):
         '''
+        #todo whole hierarchy not just level 1 child 1
         Loads the final multiplied texture and assigns it to the papermesh.
         :return:
         '''
@@ -323,27 +351,27 @@ class Organizer():
         texture = vtk.vtkTexture()
         texture.SetInputConnection(imageReader.GetOutputPort())
 
-        self.hierarchical_mesh_anchor.unfoldedActor.SetTexture(texture)
+        hm = self.hierarchical_mesh_anchor.children[0]
+        hm.unfoldedActor.SetTexture(texture)
 
         self.ren.RemoveAllViewProps()
-        self.hierarchical_mesh_anchor.unfoldedActor.GetProperty().SetOpacity(1.0)
-        self.ren.AddActor(self.hierarchical_mesh_anchor.unfoldedActor)
+        hm.unfoldedActor.GetProperty().SetOpacity(1.0)
+        self.ren.AddActor(hm.unfoldedActor)
 
-    def setUpResultRenderers(self,camera,count):
+    def setUpResultRenderers(self, camera, maxNofChilds):
         '''
         sets up the horizontally concatenated renderers for each projected structure.
         #todo, set up renderers for nested structures below level zero.
         :param camera:
-        :param count:
+        :param maxNofChilds:
         :return:
         '''
         renderers = []
-
-        width = 1.0 / count
+        width = 1.0 / maxNofChilds
         right = 0.0
         left = width
 
-        for i in range(count):
+        for i in range(maxNofChilds):
 
             render = vtk.vtkRenderer()
             render.SetActiveCamera(camera)
@@ -371,7 +399,7 @@ class Organizer():
     '''
 
     def boolean(self):
-        self.meshProcessor.booleanCGAL(self.nestedList)
+        self.hierarchical_mesh_anchor.recursive_difference()
 
     def onUnfoldTest(self):
         self.meshProcessor.unfoldTest(name="lower")

@@ -1,7 +1,7 @@
 import vtkmodules.all as vtk
 import numpy as np
 import os
-from mesh import Mesh
+from projectionStructure import ProjectionStructure
 import util
 from boolean import boolean_interface
 from mu3d.mu3dpy.mu3d import Graph
@@ -18,7 +18,7 @@ class MeshProcessing():
 
     #meshInteractor = meshInteraction.MeshInteraction(dedicatedPaperMeshes)
 
-    def mu3dUnfoldPaperMesh(self, actor, graph, iterations):
+    def mu3dUnfoldPaperMesh(self, mesh, graph, iterations):
         '''
         Forwards the mesh to the mu3d wrapper to unfold it.
         :param actor: The vtk actor containing the mesh to unfold.
@@ -28,7 +28,7 @@ class MeshProcessing():
         '''
         inpath = os.path.join(self.dirname, "../out/3D/papermesh.stl")
         outpath = os.path.join(self.dirname, "../out/3D/papermesh.off")
-        util.writeStl(actor.GetMapper().GetInput(),"papermesh")
+        util.writeStl(mesh,"papermesh")
 
         util.meshioIO(inpath,outpath)
 
@@ -73,15 +73,15 @@ class MeshProcessing():
         meshes = hierarchy.meshes
         for a in range(len(meshes)):
 
-            if meshes[a].projectionMethod == Mesh.ProjectionMethod.Inflate:
+            if meshes[a].projectionMethod == ProjectionStructure.ProjectionMethod.Inflate:
                 mesh = hierarchy.unfoldedActor.GetMapper().GetInput()
                 mesh = util.smoothMesh(mesh,meshes[a].mesh,iterations=15,relaxation=0.1)
                 poly = mesh
 
-            elif meshes[a].projectionMethod == Mesh.ProjectionMethod.Cube:
+            elif meshes[a].projectionMethod == ProjectionStructure.ProjectionMethod.Cube:
                 poly = util.projectMeshToBounds(hierarchy.unfoldedActor.GetMapper().GetInput())
 
-            elif meshes[a].projectionMethod == Mesh.ProjectionMethod.Clipping:
+            elif meshes[a].projectionMethod == ProjectionStructure.ProjectionMethod.Clipping:
                 poly = hierarchy.unfoldedActor.GetMapper().GetInput()
 
             mapper = vtk.vtkPolyDataMapper()
@@ -232,13 +232,30 @@ class MeshProcessing():
         normals.Update()
         return normals.GetOutput()
 
-    def cutMeshWithPlanes(self,mesh,cutPlanes):
+    def cutMeshWithPlanes(self,mesh,cutPlanes, centerPoint):
         '''
         Cuts a Mesh with the given planes.
+        If nor planes are given default horizontal plane through the centerPoint is used.
         :param mesh:
         :param cutPlanes:
         :return: A list containing the new mesh segments.
         '''
+
+        if not cutPlanes:
+            cutPlanes = []
+
+            # for the "upper" part of the mesh
+            plane = vtk.vtkPlane()
+            plane.SetOrigin(centerPoint)
+            plane.SetNormal(0.0, 0.0, 1.0)
+            cutPlanes.append(plane)
+
+            # for the "lower" part of the mesh
+            plane = vtk.vtkPlane()
+            plane.SetOrigin(centerPoint)
+            plane.SetNormal(0.0, 0.0, -1.0)
+            cutPlanes.append(plane)
+
         results = []
 
         for plane in cutPlanes:
@@ -266,47 +283,21 @@ class MeshProcessing():
 
         return results
 
-    def booleanCGAL(self,nestedlist):
+    def booleanCGAL(self,mesh,cutout):
+        '''
+        Subtracts cutout from mesh with cgal boolean and remeshes the cutsurface.
+        :param mesh: filepath of the .off file, from the mesh that should be modified
+        :param cutout: filepath of the .off file, from the mesh that should be subtracted
+        :return:
+        '''
 
-        mesh = self.tempPaperActor.GetMapper().GetInput()
-        #todo change to hierachy
-        cutout = self.createPapermesh(nestedlist, True)
-        cutPlanes = []
-
-        #for the "upper" part of the mesh
-        plane = vtk.vtkPlane()
-        plane.SetOrigin(cutout.GetMapper().GetInput().GetCenter())
-        plane.SetNormal(0.0, 0.0, 1.0)
-        cutPlanes.append(plane)
-
-        #for the "lower" part of the mesh
-        plane = vtk.vtkPlane()
-        plane.SetOrigin(cutout.GetMapper().GetInput().GetCenter())
-        plane.SetNormal(0.0, 0.0, -1.0)
-        cutPlanes.append(plane)
-
-        meshPieces = self.cutMeshWithPlanes(mesh, cutPlanes)
-
-        util.writeStl(cutout.GetMapper().GetInput(), "cutout")
-
-        for i in range(len(meshPieces)):
-            # write stl and convert to off
-            util.writeStl(meshPieces[i],"boolMesh{}".format(i))
-            inPath = os.path.join(self.dirname, "../out/3D/boolMesh{}.stl".format(i))
-            outPath = os.path.join(self.dirname, "../out/3D/boolMesh{}.off".format(i))
-            util.meshioIO(inPath,outPath)
-
-        #right now only for testing todo write and bool all meshes
-        cgal = boolean_interface.Boolean_Interface()
-        mesh = os.path.join(self.dirname, "../out/3D/boolMesh1.off")
-        cutout = os.path.join(self.dirname, "../out/3D/cutout.off")
-
-        #todo split boolean and unfolding so first all meshes are calculated and afterwards the meshes are unfolded on user input?
-        cgal.boolean(mesh, cutout)
+        bool = boolean_interface.Boolean_Interface()
+        bool.boolean(mesh, cutout)
         graph = Graph()
         filename = os.path.join(self.dirname, "difference.off")
         graph.load(filename)
-        if not graph.unfold(50000, 0):
+        #todo use iterations from ui
+        if not graph.unfold(10000, 0):
             print("failed to unfold :(")
         else:
             print("succesfully unfolded :)")

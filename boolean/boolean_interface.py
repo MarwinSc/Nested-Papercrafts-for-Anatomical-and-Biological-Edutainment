@@ -14,6 +14,8 @@ class Boolean_Interface(object):
         self.boolean_interface = ctypes.CDLL(dir_path + "/boolean_interface.dll")
         self.boolean_interface._boolean_interface.restype = ctypes.c_void_p
         self.boolean_interface._boolean.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
+        self.boolean_interface._boolUnion.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
+
 
         self.obj = self.boolean_interface._boolean_interface()
 
@@ -22,3 +24,6 @@ class Boolean_Interface(object):
 
         """
         self.boolean_interface._boolean(self.obj, firstpath.encode(), secondpath.encode())
+
+    def union(self,firstpath,secondpath):
+        self.boolean_interface._boolUnion(self.obj, firstpath.encode(), secondpath.encode())

@@ -3,7 +3,7 @@ import vtkmodules.all as vtk
 import util
 
 
-class Mesh(object):
+class ProjectionStructure(object):
     '''
     Class for a single imported mesh/structure.
     '''

@@ -3,7 +3,7 @@ import sys
 from PyQt5 import QtWidgets, QtCore
 import organizer
 import os
-from mesh import Mesh
+from projectionStructure import ProjectionStructure
 import random
 
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
@@ -27,6 +27,8 @@ class Ui_MainWindow(object):
         self.gridlayout = QtWidgets.QGridLayout(self.centralWidget)
         self.vtkWidget = QVTKRenderWindowInteractor(self.centralWidget)
         self.gridlayout.setSpacing(3)
+        self.numberOfLoadedStructures = 0
+
         ##For flattening.
         self.pickedIds = [[[]],[[]],[[]]]
         self.countOfPickedRegions = 0
@@ -140,22 +142,32 @@ class Ui_MainWindow(object):
 
             filename = os.path.join(self.dirname, "../Meshes")
             dlg.setDirectory(filename)
-            #dlg.setFileMode(QtWidgets.QFileDialog.AnyFile)
-            #dlg.setFilter("*.stl")
-            filenames = []
+            dlg.setNameFilter("STL (*.stl)")
 
             if dlg.exec_():
-                self.filenames.append(dlg.selectedFiles()[0])
-                layout = addMesh(dlg.selectedFiles()[0], newGroup=True)
-                for i in range(1,len(dlg.selectedFiles())):
-                    self.filenames.append(dlg.selectedFiles()[i])
-                    addMesh(dlg.selectedFiles()[i], layout=layout,newGroup=False)
-                # delete the button now
-                addFileButton.deleteLater()
+                addMesh(dlg.selectedFiles())
 
             self.vtkWidget.GetRenderWindow().Render()
 
         addFileButton.clicked.connect(getFile)
+
+
+        directImportPapermeshButton = QtWidgets.QPushButton("Direct Import Papermesh")
+
+        def directImportPapermesh():
+            dlg = QtWidgets.QFileDialog()
+            dlg.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+            filename = os.path.join(self.dirname, "../Meshes")
+            dlg.setDirectory(filename)
+            dlg.setNameFilter("STL (*.stl)")
+
+            if dlg.exec_():
+                importPapermesh(dlg.selectedFiles()[0])
+
+            self.vtkWidget.GetRenderWindow().Render()
+
+        directImportPapermeshButton.clicked.connect(directImportPapermesh)
+
 
         imageName = QtWidgets.QLineEdit("Image Name")
 
@@ -207,14 +219,20 @@ class Ui_MainWindow(object):
 
         importTextfield = QtWidgets.QLineEdit()
         importTextfield.setText("model")
-
+        '''
         def onImport():
             org.importUnfoldedMeshPass(importTextfield.text())
             self.vtkWidget.GetRenderWindow().Render()
         importButton = QtWidgets.QPushButton("Import .obj Papermesh")
         importButton.clicked.connect(onImport)
 
-        '''
+        def onImportAnchorPaperMesh():
+            org.importPapermeshAnchor()
+
+        importAnchorPapermeshButton = QtWidgets.QPushButton("Import Paper Mesh for Anchor")
+        importAnchorPapermeshButton.clicked.connect(onImportAnchorPaperMesh)
+
+        
         def onFlatten():
             #for i in range(len(self.pickedIds[0])):
             self.resultRenderes = org.onFlatten(self.pickedIds,self.inflateStruc)
@@ -243,7 +261,7 @@ class Ui_MainWindow(object):
         booleanButton = QtWidgets.QPushButton("Boolean")
 
         def onBoolean():
-            org.boolean()
+            org.difference()
         booleanButton.clicked.connect(onBoolean)
 
         hierarchySlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -371,19 +389,19 @@ class Ui_MainWindow(object):
         layoutCg.addWidget(renderBox)
 
         #import
-        importGroup = QtWidgets.QGroupBox()
-        importLayout = QtWidgets.QVBoxLayout()
-        importGroup.setLayout(importLayout)
+        #importGroup = QtWidgets.QGroupBox()
+        #importLayout = QtWidgets.QVBoxLayout()
+        #importGroup.setLayout(importLayout)
 
-        importLayout.addWidget(importButton)
-        importLayout.addWidget(importTextfield)
+        #importLayout.addWidget(importButton)
+        #importLayout.addWidget(importTextfield)
 
         paperCreationBox = QtWidgets.QGroupBox()
         paperCreationLayout = QtWidgets.QVBoxLayout()
         paperCreationBox.setLayout(paperCreationLayout)
         paperCreationLayout.addWidget(unfoldPaperMeshButton)
         paperCreationLayout.addWidget(unfoldIterationsTextfield)
-        paperCreationLayout.addWidget(importGroup)
+        #paperCreationLayout.addWidget(importGroup)
         paperCreationLayout.addWidget(projectPerTriangle)
         paperCreationLayout.addWidget(resolutionWidth)
         paperCreationLayout.addWidget(brightMultiplicationButton)
@@ -406,15 +424,18 @@ class Ui_MainWindow(object):
         debugBox_Layout = QtWidgets.QVBoxLayout()
         debugBox.setLayout(debugBox_Layout)
 
-        debugBox_Layout.addWidget(booleanButton)
+        #debugBox_Layout.addWidget(booleanButton)
         debugBox_Layout.addWidget(hierarchySlider)
         debugBox_Layout.addWidget(hierarchical_difference_button)
-        debugBox_Layout.addWidget(testButton)
+        #debugBox_Layout.addWidget(testButton)
         debugBox_Layout.addWidget(treeToStringButton)
+        #debugBox_Layout.addWidget(importAnchorPapermeshButton)
 
         layoutLeft.addWidget(debugBox)
 
         layoutRight.addWidget(addFileButton)
+        layoutRight.addWidget(directImportPapermeshButton)
+
 
 #       Append
         self.gridlayout.setColumnStretch(0, 1)
@@ -427,30 +448,30 @@ class Ui_MainWindow(object):
 
         MainWindow.setCentralWidget(self.centralWidget)
 
-        def addMesh(name, layout=None, level=0, parent = None, childId = -1, newGroup = True):
-            '''
-            Method forwarding the loaded structure as mesh to the organizer class.
-            Handling the creation of UI elements and event calls for the loaded files.
-            Gets called recursively, either to create a new hierarchical mesh child, or to append a mesh to an existing hierarchical mesh.
-            :param name: The filename.
-            :param layout: The layout in which the new UI elements are inserted, if newGroup = False.
-            :param level: The level of the loaded structures.
-            :param parent: The parent Hierarchical Mesh of the new loaded structures.
-            :param childId: The ID of the child to which the loaded meshes should be appended to.
-            :param newGroup: Boolean indicating if a new Box should be created, to hold the created UI elements or if the new elements are inserted in an existing Box.
-            :return: If newGroup is True, the created Box is returned.
-            '''
-            idx = self.filenames.index(name)
-            r = lambda: random.randint(0, 255)
-            levelColor = '#%02X%02X%02X' % (r(), r(), r())
+        def importPapermesh(name):
+            mesh = ProjectionStructure(name, self.numberOfLoadedStructures)
+            mesh.hierarchicalMesh = org.directImportPapermesh(mesh)
+            layoutRight.addWidget(setupMeshUiElements(mesh, mesh.filename))
+            ren.RemoveAllViewProps()
+            if renderStructuresButton.isChecked():
+                ren.RemoveAllViewProps()
+                org.hierarchical_mesh_anchor.renderStructures(ren)
+            if renderPaperMeshesButton.isChecked():
+                org.hierarchical_mesh_anchor.renderPaperMeshes(ren)
 
-            mesh = Mesh(name,idx)
+        def addMesh(names):
 
-            if level > 0:
-                hierarchicalMesh = org.addMesh(mesh,parent,childId)
-            else:
-                hierarchicalMesh = org.addMesh(mesh, None, childId)
-            mesh.hierarchicalMesh = hierarchicalMesh
+            meshes = []
+            for i,name in enumerate(names):
+                self.numberOfLoadedStructures += 1
+                mesh = ProjectionStructure(name, self.numberOfLoadedStructures)
+                meshes.append(mesh)
+
+            hierarchicalMesh = org.addMesh(meshes)
+
+            for mesh in meshes:
+                mesh.hierarchicalMesh = hierarchicalMesh
+                layoutRight.addWidget(setupMeshUiElements(mesh,mesh.filename))
 
             ren.RemoveAllViewProps()
             if renderStructuresButton.isChecked():
@@ -459,8 +480,11 @@ class Ui_MainWindow(object):
             if renderPaperMeshesButton.isChecked():
                 org.hierarchical_mesh_anchor.renderPaperMeshes(ren)
 
-            label = QtWidgets.QLabel(name.split("/")[-1])
+        def setupMeshUiElements(mesh,name):
 
+            meshGroupBox = QtWidgets.QGroupBox()
+
+            label = QtWidgets.QLabel(name.split("/")[-1])
             colorBt = QtWidgets.QPushButton("Color")
             colorDialog = QtWidgets.QColorDialog()
             opacity = QtWidgets.QLineEdit("0.5")
@@ -473,10 +497,12 @@ class Ui_MainWindow(object):
             opacity.textChanged.connect(onOpacityChange)
 
             def onColorSelect():
-                red = colorDialog.currentColor().red()/255
-                green = colorDialog.currentColor().green()/255
-                blue = colorDialog.currentColor().blue()/255
-                mesh.setColor([red,green,blue])
+                red = colorDialog.currentColor().red()
+                green = colorDialog.currentColor().green()
+                blue = colorDialog.currentColor().blue()
+                mesh.setColor([red/ 255, green/ 255, blue/ 255])
+                borderColor = '#%02X%02X%02X' % (red,green,blue)
+                meshGroupBox.setStyleSheet("QWidget#meshGroup{}".format(level) + " {border: 1px solid " + borderColor + ";}")
                 self.vtkWidget.update()
 
             def onColorButton():
@@ -495,6 +521,7 @@ class Ui_MainWindow(object):
                 clipping.setChecked(False)
                 cube.setChecked(False)
                 mesh.projectionMethod = mesh.ProjectionMethod.Inflate
+
             inflate.clicked.connect(onInflate)
 
             def onClipping():
@@ -514,12 +541,19 @@ class Ui_MainWindow(object):
             colorDialog.currentColorChanged.connect(onColorSelect)
             colorBt.clicked.connect(onColorButton)
 
-            if newGroup:
-                meshGroupBox = QtWidgets.QGroupBox()
-                meshGroupBox.setObjectName("meshGroup{}".format(level))
-                meshGroupBox.setStyleSheet("QWidget#meshGroup{}".format(level)+" {border: 1px solid " + levelColor + ";}")
-                meshGroupLayout = QtWidgets.QVBoxLayout()
-                meshGroupBox.setLayout(meshGroupLayout)
+            #----
+            if self.numberOfLoadedStructures % 3 == 0:
+                levelColor = '#%02X%02X%02X' % (0, 255, 255)
+            elif self.numberOfLoadedStructures % 3 == 1:
+                levelColor = '#%02X%02X%02X' % (255, 0, 255)
+            elif self.numberOfLoadedStructures % 3 == 2:
+                levelColor = '#%02X%02X%02X' % (255, 255, 0)
+            level = mesh.hierarchicalMesh.getLevel()
+
+            meshGroupBox.setObjectName("meshGroup{}".format(level))
+            meshGroupBox.setStyleSheet("QWidget#meshGroup{}".format(level)+" {border: 1px solid " + levelColor + ";}")
+            meshGroupLayout = QtWidgets.QVBoxLayout()
+            meshGroupBox.setLayout(meshGroupLayout)
 
             meshBox = QtWidgets.QGroupBox()
             meshLayout = QtWidgets.QHBoxLayout()
@@ -537,66 +571,9 @@ class Ui_MainWindow(object):
             projectLayout.addWidget(cube)
             projectLayout.minimumSize()
 
-            addSubmeshButton = QtWidgets.QPushButton("Add Submesh")
-            addMeshButton = QtWidgets.QPushButton("Add Mesh")
-
-            def onAddSubMesh():
-                '''
-                Recursive call of the addMesh method for a new sub mesh.
-                :return:
-                '''
-                dlg = QtWidgets.QFileDialog()
-                dlg.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
-
-                filename = os.path.join(self.dirname, "../Meshes")
-                dlg.setDirectory(filename)
-
-                if dlg.exec_():
-                    self.filenames.append(dlg.selectedFiles()[0])
-                    layout = addMesh(dlg.selectedFiles()[0], layout=meshGroupLayout, level=level + 1, parent=hierarchicalMesh, childId=childId + 1,newGroup=True)
-
-                    for i in range(1, len(dlg.selectedFiles())):
-                        self.filenames.append(dlg.selectedFiles()[i])
-                        addMesh(dlg.selectedFiles()[i],layout=layout,level = level+1,parent=hierarchicalMesh,childId=childId+1,newGroup=False)
-
-
-                self.vtkWidget.GetRenderWindow().Render()
-
-            addSubmeshButton.clicked.connect(onAddSubMesh)
-
-            def onAddMesh():
-                '''
-                Recursive call of the addMesh method to append a new mesh to an hierarchical mesh.
-                :return:
-                '''
-                dlg = QtWidgets.QFileDialog()
-                dlg.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
-
-                filename = os.path.join(self.dirname, "../Meshes")
-                dlg.setDirectory(filename)
-
-                if dlg.exec_():
-                    for i in dlg.selectedFiles():
-                        self.filenames.append(i)
-                        addMesh(i, layout=meshGroupLayout, level=level, parent=parent, childId=childId, newGroup=False)
-
-                self.vtkWidget.GetRenderWindow().Render()
-
-            addMeshButton.clicked.connect(onAddMesh)
-
-            if newGroup:
-                meshGroupLayout.addWidget(addMeshButton)
-                meshGroupLayout.addWidget(addSubmeshButton)
-                meshGroupLayout.addWidget(meshBox)
-                meshGroupLayout.addWidget(projectBox)
-                if layout:
-                    layout.addWidget(meshGroupBox)
-                else:
-                    layoutRight.addWidget(meshGroupBox)
-                return meshGroupLayout
-            else:
-                layout.addWidget(meshBox)
-                layout.addWidget(projectBox)
+            meshGroupLayout.addWidget(meshBox)
+            meshGroupLayout.addWidget(projectBox)
+            return meshGroupBox
 
     def isfloat(self, value):
         try:
