@@ -14,8 +14,8 @@ def build_hierarchy():
     mapper.SetInputConnection(stlReader.GetOutputPort())
     actor1 = vtk.vtkActor()
     actor1.SetMapper(mapper)
-    actor1.GetProperty().SetOpacity(0.5)
-    actor1.GetProperty().SetColor(0, 1, 0)
+    actor1.GetProperty().SetOpacity(0.2)
+    actor1.GetProperty().SetColor(0.0, 1.0, 0.0)
 
     anchor.add(actor1, "../meshes/mid_mesh.stl")
 
@@ -24,8 +24,8 @@ def build_hierarchy():
     mapper.SetInputConnection(stlReader.GetOutputPort())
     actor2 = vtk.vtkActor()
     actor2.SetMapper(mapper)
-    actor2.GetProperty().SetOpacity(0.5)
-    actor2.GetProperty().SetColor(1, 0, 0)
+    actor2.GetProperty().SetOpacity(0.2)
+    actor2.GetProperty().SetColor(1.0, 0.0, 0.0)
 
     anchor.add(actor2, "../meshes/inner_mesh.stl")
 
@@ -34,8 +34,8 @@ def build_hierarchy():
     mapper.SetInputConnection(stlReader.GetOutputPort())
     actor3 = vtk.vtkActor()
     actor3.SetMapper(mapper)
-    actor3.GetProperty().SetOpacity(0.5)
-    actor3.GetProperty().SetColor(0, 0, 1)
+    actor3.GetProperty().SetOpacity(0.2)
+    actor3.GetProperty().SetColor(0.0, 0.0, 1.0)
 
     anchor.add(actor3, "../meshes/outer_mesh.stl")
 
@@ -44,8 +44,8 @@ def build_hierarchy():
     mapper.SetInputConnection(stlReader.GetOutputPort())
     actor4 = vtk.vtkActor()
     actor4.SetMapper(mapper)
-    actor4.GetProperty().SetOpacity(0.5)
-    actor4.GetProperty().SetColor(1, 1, 0)
+    actor4.GetProperty().SetOpacity(0.2)
+    actor4.GetProperty().SetColor(1.0, 1.0, 0.0)
 
     anchor.add(actor4, "../meshes/inner_mesh.stl")
     return anchor
@@ -56,8 +56,16 @@ if __name__ == "__main__":
     print(anchor.toList())
     app = QtWidgets.QApplication(sys.argv)
     vpc = ViewPointComputation(anchor.toList())
+    #vpc = ViewPointComputation()
     app.exec_()
     vpc.close()
+
+    cut_plane = vpc.planes[0]
+    plane = vtk.vtkPlane()
+    plane.SetOrigin(cut_plane.GetPosition())
+    plane.SetNormal(cut_plane.GetOrientation())
+    anchor.cut_with_plane(plane)
+
     # anchor.convexify -> anchor.simplify -> anchor.recusrive_difference
     # for plane in vpc.planes():
         # anchor.cut_with_plane (?)
