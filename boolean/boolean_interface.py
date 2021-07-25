@@ -15,9 +15,21 @@ class Boolean_Interface(object):
         self.boolean_interface._boolean_interface.restype = ctypes.c_void_p
         self.boolean_interface._boolean.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
         self.boolean_interface._boolUnion.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
-
+        self.boolean_interface._triangulateCut.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float,ctypes.c_float,ctypes.c_float, ctypes.c_float,ctypes.c_float,ctypes.c_float]
 
         self.obj = self.boolean_interface._boolean_interface()
+
+
+    def triangulateCut(self,path,normal_x,normal_y,normal_z, origin_x, origin_y, origin_z):
+        """
+
+        :param path: Path to mesh piece that should be triangulated
+        :param normal_x: x-coordinate of the cutting planes normal
+        :param normal_y: y-coordinate of the cutting planes normal
+        :param normal_z: z-coordinate of the cutting planes normal
+        :return:
+        """
+        self.boolean_interface._triangulateCut(self.obj, path.encode(), normal_x, normal_y, normal_z, origin_x, origin_y, origin_z)
 
     def boolean(self,firstpath,secondpath):
         """

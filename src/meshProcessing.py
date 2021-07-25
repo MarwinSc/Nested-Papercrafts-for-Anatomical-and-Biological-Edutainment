@@ -34,9 +34,9 @@ class MeshProcessing():
 
         graph.load(outpath)
         if not graph.unfold(iterations, 0):
-            msgBox = QtWidgets.QMessageBox()
-            msgBox.setText("failed to unfold :( in {} iterations".format(iterations))
-            msgBox.exec()
+            #msgBox = QtWidgets.QMessageBox()
+            #msgBox.setText("failed to unfold :( in {} iterations".format(iterations))
+            #msgBox.exec()
             return None
         else:
             print("succesfully unfolded :) in {} iterations".format(iterations))
@@ -64,12 +64,9 @@ class MeshProcessing():
             util.writeObj(actor.GetMapper().GetInput(), "unfolded/model")
             return actor
 
+    '''
     def createDedicatedMeshes(self, hierarchy):
-        '''
-        For each loaded structure in the given hierarchical mesh create a projection mesh depending on the chosen projection method for this structure.
-        :param hierarchy: a hierarchical mesh object
-        :return:
-        '''
+
         meshes = hierarchy.meshes
         for a in range(len(meshes)):
 
@@ -91,6 +88,31 @@ class MeshProcessing():
             actor.SetMapper(mapper)
 
             meshes[a].projectionActor = actor
+    '''
+
+    def createDedicatedMesh(self,mesh,unfolded):
+        '''
+        Creates a dedicated paper mesh to project a given mesh onto it
+        :param mesh: the anatomical structure
+        :param unfolded: the unfolded papermesh for that structure
+        :return:
+        '''
+        if mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Inflate:
+            mesh = util.smoothMesh(unfolded.GetMapper().GetInput(), mesh, iterations=15, relaxation=0.1)
+            poly = mesh
+
+        elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Cube:
+            poly = util.projectMeshToBounds(unfolded.GetMapper().GetInput())
+
+        elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Clipping:
+            poly = unfolded.GetMapper().GetInput()
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(poly)
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        return actor
+
 
     def importUnfoldedMesh(self, name):
         '''
@@ -269,17 +291,16 @@ class MeshProcessing():
             clip.SetValue(0)
             clip.Update()
 
-            fillHoles = vtk.vtkFillHolesFilter()
-            fillHoles.SetInputData(clip.GetOutput())
-            fillHoles.SetHoleSize(10000.0)
-            fillHoles.Update()
+            #fillHoles = vtk.vtkFillHolesFilter()
+            #fillHoles.SetInputData(clip.GetOutput())
+            #fillHoles.SetHoleSize(10000.0)
+            #fillHoles.Update()
 
-            filledMesh = fillHoles.GetOutput()
-            filledMesh = self.calcMeshNormals(filledMesh)
-            # filledMesh.GetPointData().SetNormals(normals2)
-            filledMesh.GetPoints().GetData().Modified()
+            #filledMesh = fillHoles.GetOutput()
+            #filledMesh = self.calcMeshNormals(filledMesh)
+            #filledMesh.GetPoints().GetData().Modified()
 
-            results.append(filledMesh)
+            results.append(clip.GetOutput())
 
         return results
 
@@ -293,8 +314,10 @@ class MeshProcessing():
 
         bool = boolean_interface.Boolean_Interface()
         bool.boolean(mesh, cutout)
+        '''
         graph = Graph()
         filename = os.path.join(self.dirname, "difference.off")
+
         graph.load(filename)
         #todo use iterations from ui
         if not graph.unfold(10000, 0):
@@ -304,7 +327,7 @@ class MeshProcessing():
             filename = os.path.join(self.dirname, "../out/3D/unfolded/difference.obj")
             gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_difference.obj")
             graph.save(filename, gluetabs_filename)
-
+        '''
         #set as dedicated meshes for unfolding
         #self.dedicatedPaperMeshes = [upper,lower]
 
@@ -314,9 +337,7 @@ class MeshProcessing():
         :param name:
         :return:
         '''
-        inpath = os.path.join(self.dirname, "../out/3D/" + name + ".stl")
         outpath = os.path.join(self.dirname, "../out/3D/papermesh.off")
-        util.meshioIO(inpath,outpath)
 
         graph = Graph()
         graph.load(outpath)
@@ -328,3 +349,107 @@ class MeshProcessing():
             gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_" + name + ".obj")
 
             graph.save(filename, gluetabs_filename)
+
+
+    def writeObjMeshes(self,hm):
+        '''
+        bools and cuts input meshes
+        writes the meshes pre and post boolean to the disc
+        :return:
+        '''
+        for child in hm.children:
+
+            trans = vtk.vtkTransform()
+            trans.RotateX(-90.)
+            transform = vtk.vtkTransformPolyDataFilter()
+            transform.SetTransform(trans)
+
+            name = "objTestCuts/originalPapermesh"
+            util.writeObj(util.cleanMesh(child.papermesh),name)
+            #-again rotated
+            name = "objTestCuts/originalPapermesh_rotated"
+            transform.SetInputData(util.cleanMesh(child.papermesh))
+            transform.Update()
+            util.writeObj(transform.GetOutput(),name)
+
+            name = "objTestCuts/originalPapermeshChild"
+            util.writeObj(util.cleanMesh(child.children[0].papermesh), name)
+            #-shrink mesh
+            name = "objTestCuts/originalPapermeshChild_shrunk"
+            cutout = util.offsetMesh(child.children[0].papermesh,-2.5)
+            util.writeObj(cutout, name)
+
+            #-again rotated
+            name = "objTestCuts/originalPapermeshChild_rotated"
+            transform.SetInputData(util.cleanMesh(child.children[0].papermesh))
+            transform.Update()
+            util.writeObj(transform.GetOutput(),name)
+            name = "objTestCuts/originalPapermeshChild_shrunk_rotated"
+            cutout = util.offsetMesh(transform.GetOutput() ,-2.5)
+            util.writeObj(cutout, name)
+
+            centerPoint = child.children[0].papermesh.GetCenter()
+
+            cutPlanes = []
+
+            # for the "upper" part of the mesh
+            plane = vtk.vtkPlane()
+            plane.SetOrigin(centerPoint)
+            plane.SetNormal(0.0, 0.0, 1.0)
+            cutPlanes.append(plane)
+
+            # for the "lower" part of the mesh
+            plane = vtk.vtkPlane()
+            plane.SetOrigin(centerPoint)
+            plane.SetNormal(-0.0, -0.0, -1.0)
+            cutPlanes.append(plane)
+
+            pieces = self.cutMeshWithPlanes(child.papermesh,cutPlanes,centerPoint)
+
+            for i,piece in enumerate(pieces):
+                name = "papermeshPiece{}".format(i)
+                file = "objTestCuts/PapermeshCuts/"+name
+                piece = util.cleanMesh(piece)
+                util.writeObj(piece, file)
+
+                filepath = os.path.join(self.dirname, "../out/3D/" + file + ".obj")
+                meshPath = os.path.join(self.dirname, "../out/3D/" + name + ".off")
+                util.meshioIO(filepath,meshPath)
+
+                util.writeStl(child.children[0].papermesh, "tempCutout")
+                inPath = os.path.join(self.dirname, "../out/3D/tempCutout.stl")
+                outPath = os.path.join(self.dirname, "../out/3D/tempCutout.off")
+                util.meshioIO(inPath, outPath)
+
+                print(meshPath,outPath)
+                self.booleanCGAL(meshPath,outPath)
+                inPath = os.path.join(self.dirname,"difference.off")
+                outPath = os.path.join(self.dirname,"../out/3D/objTestCuts/BooledPapermeshCuts/booledPapermeshPiece{}".format(i)+".obj")
+                util.meshioIO(inPath,outPath)
+
+                #-------- again for rotated meshes
+
+                file = file + "_rotated"
+                transform.SetInputData(piece)
+                transform.Update()
+                util.writeObj(transform.GetOutput(), file)
+
+                filepath = os.path.join(self.dirname, "../out/3D/" + file + ".obj")
+                meshPath = os.path.join(self.dirname, "../out/3D/" + name + "_rotated.off")
+                util.meshioIO(filepath,meshPath)
+
+                transform.SetInputData(child.children[0].papermesh)
+                transform.Update()
+                util.writeStl(transform.GetOutput(), "tempCutout_rotated")
+                inPath = os.path.join(self.dirname, "../out/3D/tempCutout_rotated.stl")
+                outPath = os.path.join(self.dirname, "../out/3D/tempCutout_rotated.off")
+                util.meshioIO(inPath, outPath)
+
+                self.booleanCGAL(meshPath,outPath)
+                inPath = os.path.join(self.dirname,"difference.off")
+                outPath = os.path.join(self.dirname,"../out/3D/objTestCuts/BooledPapermeshCuts/booledPapermeshPiece{}".format(i)+"_rotated.obj")
+                util.meshioIO(inPath,outPath)
+
+
+
+

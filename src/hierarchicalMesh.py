@@ -149,15 +149,76 @@ class HierarchicalMesh(object):
         Recursively "cuts" out children of children of children of children ...
         :return: None
         """
-        if self.mesh is not None:
+        if self.mesh is not None and self.children:
             final_mesh = trimesh.load(self.file)
             for child in self.children:
                 tri_child = trimesh.load(child.file)
                 #final_mesh = final_mesh.difference(tri_child, engine='blender')
-                final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
+                final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
 
             filename = os.path.join(self.dirname, "../out/3D/differenced_" + self.name)
             final_mesh.export(filename)
+
+            final_mesh_vtk = util.readStl(filename)
+
+            #----cut planes
+            #centerPoint = self.children[0].papermesh.GetCenter()
+            cutNormal = self.cutPlane.GetNormal()
+            invertedNormal = (-1.0 * float(cutNormal[0]), -1.0 * float(cutNormal[1]), -1.0 * float(cutNormal[2]))
+            invPlane = vtk.vtkPlane()
+            invPlane.SetOrigin(self.cutPlane.GetOrigin())
+            invPlane.SetNormal(invertedNormal[0],invertedNormal[1],invertedNormal[2])
+            planes = [self.cutPlane, invPlane]
+            print(self.cutPlane.GetOrigin())
+            #----------
+            '''
+            centerPoint = self.children[0].papermesh.GetCenter()
+            planes = []
+
+            # for the "upper" part of the mesh
+            plane = vtk.vtkPlane()
+            plane.SetOrigin(centerPoint)
+            plane.SetNormal(0.0, 0.0, 1.0)
+            planes.append(plane)
+
+            # for the "lower" part of the mesh
+            plane = vtk.vtkPlane()
+            plane.SetOrigin(centerPoint)
+            plane.SetNormal(0.0, 0.0, -1.0)
+            planes.append(plane)
+            '''
+
+            meshPieces = self.meshProcessor.cutMeshWithPlanes(final_mesh_vtk, planes, None)
+            paths = []
+            paths2 = []
+            for i in range(len(meshPieces)):
+                # write stl and convert to off
+                print("name " + self.name)
+                util.writeStl(meshPieces[i], "piece{}_".format(i) + self.name[:self.name.rfind('.')])
+                inPath = os.path.join(self.dirname, "../out/3D/piece{}_".format(i) + self.name)
+                outPath = os.path.join(self.dirname, "../out/3D/piece{}_".format(i) + self.name[:self.name.rfind('.')]+".off")
+                util.meshioIO(inPath, outPath)
+                paths.append(outPath)
+                paths2.append(inPath)
+
+            self.meshPieces = []
+
+            for i,path in enumerate(paths):
+                normal = planes[i].GetNormal()
+                origin = planes[i].GetOrigin()
+                boolean_interface.Boolean_Interface().triangulateCut(paths[i],-1.0 * float(normal[0]),-1.0 * float(normal[1]),-1.0 * float(normal[2]), float(origin[0]), float(origin[1]), float(origin[2]))
+                inPath = os.path.join(self.dirname, "../out/3D/connected.off")
+                outPath = paths2[i]
+                util.meshioIO(inPath, outPath)
+
+                mesh = util.readStl(outPath)
+
+                mapper = vtk.vtkPolyDataMapper()
+                mapper.SetInputData(mesh)
+                actor = vtk.vtkActor()
+                actor.SetMapper(mapper)
+                actor.GetProperty().SetOpacity(0.15)
+                self.meshPieces.append(actor)
 
         # if all children are cut out save it and call boolean for children
         for child in self.children:
@@ -180,7 +241,11 @@ class HierarchicalMesh(object):
         :param renderer:
         :return:
         '''
-        renderer.AddActor(self.mesh)
+        if hasattr(self,"meshPieces"):
+            for actor in self.meshPieces:
+                renderer.AddActor(actor)
+        else:
+            renderer.AddActor(self.mesh)
         for child in self.children:
             child.renderPaperMeshes(renderer)
 
@@ -211,7 +276,9 @@ class HierarchicalMesh(object):
         return actor
 
     def unfoldWholeHierarchy(self, iterations):
-        if hasattr(self,'papermesh'):
+        if hasattr(self,'meshPieces'):
+            self.unfoldPaperMeshPieces(iterations)
+        elif hasattr(self,'papermesh'):
             self.unfoldPaperMesh(iterations)
         for child in self.children:
             child.unfoldWholeHierarchy(iterations)
@@ -229,8 +296,30 @@ class HierarchicalMesh(object):
         self.graph = Graph()
         unfoldedActor = self.meshProcessor.mu3dUnfoldPaperMesh(self.papermesh, self.graph, iterations)
         if unfoldedActor:
+            self.label.setText("Unfolded")
             self.unfoldedActor = unfoldedActor
-            self.meshProcessor.createDedicatedMeshes(self)
+            #for mesh in self.meshes:
+            #    mesh.dedicatedMeshes = [self.meshProcessor.createDedicatedMesh(mesh,unfoldedActor)]
+
+    def unfoldPaperMeshPieces(self, iterations):
+        self.unfoldedActors = []
+        unfoldedString = ""
+        for i,piece in enumerate(self.meshPieces):
+            idx = "{}_{}_Piece{}".format(self.getLevel(), self.getChildIdx(), i)
+            self.writePapermeshStlAndOff(idx)
+            self.graph = Graph()
+            unfoldedActor = self.meshProcessor.mu3dUnfoldPaperMesh(piece.GetMapper().GetInput(), self.graph, iterations)
+            if unfoldedActor:
+                unfoldedString += "Unfolded, "
+                self.unfoldedActors.append(unfoldedActor)
+            else:
+                unfoldedString += "Not Unfolded, "
+        self.label.setText(unfoldedString)
+
+        #for mesh in self.meshes:
+        #    mesh.dedicatedMeshes = []
+        #    for actor in self.unfoldedActors:
+        #        mesh.dedicatedMeshes.append(self.meshProcessor.createDedicatedMesh(mesh, actor))
 
     def getAllMeshes(self, asActor = True):
         '''
@@ -253,7 +342,7 @@ class HierarchicalMesh(object):
         :return: The full path to the stl file.
         '''
         name = "papermeshLevel{}".format(levelIdx)
-        util.writeStl(self.papermesh, name)
+        util.writeStl(util.cleanMesh(self.papermesh), name)
         inpath = os.path.join(self.dirname, "../out/3D/papermeshLevel{}.stl".format(levelIdx))
         outpath = os.path.join(self.dirname, "../out/3D/papermeshLevel{}.off".format(levelIdx))
         util.meshioIO(inpath,outpath)
@@ -270,12 +359,14 @@ class HierarchicalMesh(object):
         for name in names:
             print(name, end=", ")
         print("")
+        if hasattr(self,"cutPlane"):
+            print("cutPlane, Normal: {} Origin: {}".format(self.cutPlane.GetNormal(),self.cutPlane.GetOrigin()))
         for child in self.children:
             child.toString()
 
     def getChildIdx(self):
         '''
-        the concatenated childIdx of all parents to this mesh, to be able to assign a unique name  encoding the position in the hierarchy to the papermesh.
+        the concatenated childIdx of all parents to this mesh, to be able to assign a unique name encoding the position in the hierarchy to the papermesh.
         e.g.: 100 ... mesh is second child of parent, which is first child of its parent, which is the first child of the anchor mesh.
         :return:
         '''
@@ -325,56 +416,39 @@ class HierarchicalMesh(object):
         del level_dict[0]
         return [v for k, v in level_dict.items()]
 
-    def difference(self):
+    def toActorDict(self, hierarchical_dict):
+        """
+        :return:
+        """
+        current_level = self.getLevel()
+        if current_level not in hierarchical_dict:
+            hierarchical_dict[current_level] = []
 
-        #currently cuting first child
-        centerPoint = self.children[0].papermesh.GetCenter()
+        for mesh in self.meshes:
+            hierarchical_dict[current_level].append(mesh.getActor())
 
-        meshPieces = self.meshProcessor.cutMeshWithPlanes(self.papermesh,None,centerPoint)
+        for child in self.children:
+            child.toActorDict(hierarchical_dict)
 
-        util.writeStl(self.children[0].papermesh, "tempCutout")
-        inPath = os.path.join(self.dirname, "../out/3D/tempCutout.stl")
-        outPath = os.path.join(self.dirname, "../out/3D/tempCutout.off")
-        util.meshioIO(inPath, outPath)
+        return hierarchical_dict
 
-        for i in range(len(meshPieces)):
-            # write stl and convert to off
-            util.writeStl(meshPieces[i],"tempMeshPiece{}".format(i))
-            inPath = os.path.join(self.dirname, "../out/3D/tempMeshPiece{}.stl".format(i))
-            outPath = os.path.join(self.dirname, "../out/3D/tempMeshPiece{}.off".format(i))
-            util.meshioIO(inPath,outPath)
+    def toActorList(self):
+        actorDict = self.toActorDict({})
+        del actorDict[0]
+        list = [v for k, v in actorDict.items()]
+        return list
 
-        mesh = os.path.join(self.dirname, "../out/3D/tempMeshPiece1.off")
-        cutout = os.path.join(self.dirname, "../out/3D/tempCutout.off")
 
-        self.meshProcessor.booleanCGAL(mesh,cutout)
+    def addCutPlanes(self, viewpoints, bds):
 
-    def union(self):
+        if self.parent:
+            plane = vtk.vtkPlane()
+            x0, y0, z0 = (bds[self.getLevel()-1][1] - abs(bds[self.getLevel()-1][0])) / 2., (bds[self.getLevel()-1][3] - abs(bds[self.getLevel()-1][2])) / 2., (bds[self.getLevel()-1][5] - abs(bds[self.getLevel()-1][4])) / 2.
+            plane.SetOrigin(x0,y0,z0)
+            plane.SetNormal(viewpoints[self.getLevel()-1][0], viewpoints[self.getLevel()-1][1], viewpoints[self.getLevel()-1][2])
+            self.cutPlane = plane
 
-        cube = vtk.vtkCubeSource()
-        cube.SetXLength(1000.0)
-        cube.SetYLength(1000.0)
-        cube.SetZLength(0.001)
-        cube.SetCenter(self.children[0].papermesh.GetCenter())
-        cube.Update()
+        for child in self.children:
+            child.addCutPlanes(viewpoints, bds)
 
-        util.writeStl(cube.GetOutput(),"testCube")
-        inPath = os.path.join(self.dirname, "../out/3D/testCube.stl")
-        outPath = os.path.join(self.dirname, "../out/3D/testCube.off")
-        util.meshioIO(inPath, outPath)
-
-        meshPath = os.path.join(self.dirname, "../out/3D/papermeshLevel1.off")
-
-        bool = boolean_interface.Boolean_Interface()
-        bool.union(meshPath, outPath)
-
-        self.intersection()
-
-    def intersection(self):
-
-        meshPath = os.path.join(self.dirname, "../out/3D/papermeshLevel0.off")
-        cutoutPath = os.path.join(self.dirname, "../out/3D/union.off")
-
-        bool = boolean_interface.Boolean_Interface()
-        bool.boolean(meshPath,cutoutPath)
 

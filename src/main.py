@@ -5,8 +5,8 @@ import organizer
 import os
 from projectionStructure import ProjectionStructure
 import random
-
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+from viewpointselection.app import ViewPointComputation
 
 class Ui_MainWindow(object):
 
@@ -28,10 +28,13 @@ class Ui_MainWindow(object):
         self.vtkWidget = QVTKRenderWindowInteractor(self.centralWidget)
         self.gridlayout.setSpacing(3)
         self.numberOfLoadedStructures = 0
+        self.meshGroups = []
 
-        ##For flattening.
+        ##deprecated (For flattening)
         self.pickedIds = [[[]],[[]],[[]]]
         self.countOfPickedRegions = 0
+
+        #org.clearOutputDirectory()
 
         #      init Widgets
         resetCameraButton = QtWidgets.QPushButton("Reset Camera")
@@ -280,9 +283,9 @@ class Ui_MainWindow(object):
 
         hierarchical_difference_button.clicked.connect(on_hierarchical_difference)
 
-        testButton = QtWidgets.QPushButton("TestUnfold")
+        testButton = QtWidgets.QPushButton("Temp")
         def onUnfoldTest():
-            org.onUnfoldTest()
+            org.writeObjMeshes()
 
         testButton.clicked.connect(onUnfoldTest)
 
@@ -318,6 +321,30 @@ class Ui_MainWindow(object):
 
         renderStructuresButton.clicked.connect(onRenderStructures)
         renderPaperMeshesButton.clicked.connect(onRenderPaperMeshes)
+
+
+        entropyButton = QtWidgets.QPushButton("Cut")
+        def onEntropy():
+
+            hl = org.hierarchical_mesh_anchor.toActorList()
+            window = ViewPointComputation(hl)
+            viewpoints, bounds = window.getMaxViewPoints_AndBounds()
+            org.renderCutPlanes(viewpoints,bounds)
+            org.cutHM(viewpoints, bounds)
+
+        entropyButton.clicked.connect(onEntropy)
+
+
+        testCutButton = QtWidgets.QPushButton("Test Cut")
+        def onTestCut():
+            org.onCutTest()
+        testCutButton.clicked.connect(onTestCut)
+
+        testUnfoldButton = QtWidgets.QPushButton("Test Unfold")
+        def onTestUnfold():
+            org.onUnfoldTest()
+
+        testUnfoldButton.clicked.connect(onTestUnfold)
 
         """
         Adding UI elements to their respective container.
@@ -399,6 +426,7 @@ class Ui_MainWindow(object):
         paperCreationBox = QtWidgets.QGroupBox()
         paperCreationLayout = QtWidgets.QVBoxLayout()
         paperCreationBox.setLayout(paperCreationLayout)
+        paperCreationLayout.addWidget(entropyButton)
         paperCreationLayout.addWidget(unfoldPaperMeshButton)
         paperCreationLayout.addWidget(unfoldIterationsTextfield)
         #paperCreationLayout.addWidget(importGroup)
@@ -427,8 +455,10 @@ class Ui_MainWindow(object):
         #debugBox_Layout.addWidget(booleanButton)
         debugBox_Layout.addWidget(hierarchySlider)
         debugBox_Layout.addWidget(hierarchical_difference_button)
-        #debugBox_Layout.addWidget(testButton)
+        debugBox_Layout.addWidget(testButton)
         debugBox_Layout.addWidget(treeToStringButton)
+        debugBox_Layout.addWidget(testCutButton)
+        debugBox_Layout.addWidget(testUnfoldButton)
         #debugBox_Layout.addWidget(importAnchorPapermeshButton)
 
         layoutLeft.addWidget(debugBox)
@@ -451,13 +481,30 @@ class Ui_MainWindow(object):
         def importPapermesh(name):
             mesh = ProjectionStructure(name, self.numberOfLoadedStructures)
             mesh.hierarchicalMesh = org.directImportPapermesh(mesh)
-            layoutRight.addWidget(setupMeshUiElements(mesh, mesh.filename))
+            mesh.hierarchicalMesh.label = QtWidgets.QLabel("Not Unfolded")
+
+            meshGroupBox = QtWidgets.QGroupBox()
+            meshGroupLayout = QtWidgets.QVBoxLayout()
+            meshGroupBox.setLayout(meshGroupLayout)
+            borderColor = '#%02X%02X%02X' % (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            meshGroupBox.setObjectName("meshGroup")
+            meshGroupBox.setStyleSheet("QWidget#meshGroup" + " {border: 1px solid " + borderColor + ";}")
+
+            meshBox, projectBox = setupMeshUiElements(mesh, mesh.filename)
+            meshGroupLayout.addWidget(meshBox)
+            meshGroupLayout.addWidget(projectBox)
+            meshGroupLayout.addWidget(mesh.hierarchicalMesh.label)
+
+            layoutRight.addWidget(meshGroupBox)
+
             ren.RemoveAllViewProps()
             if renderStructuresButton.isChecked():
                 ren.RemoveAllViewProps()
                 org.hierarchical_mesh_anchor.renderStructures(ren)
             if renderPaperMeshesButton.isChecked():
                 org.hierarchical_mesh_anchor.renderPaperMeshes(ren)
+
+            self.meshGroups.append(meshGroupLayout)
 
         def addMesh(names):
 
@@ -468,10 +515,24 @@ class Ui_MainWindow(object):
                 meshes.append(mesh)
 
             hierarchicalMesh = org.addMesh(meshes)
+            hierarchicalMesh.label = QtWidgets.QLabel("Not Unfolded")
+
+            meshGroupBox = QtWidgets.QGroupBox()
+            meshGroupLayout = QtWidgets.QVBoxLayout()
+            meshGroupBox.setLayout(meshGroupLayout)
 
             for mesh in meshes:
                 mesh.hierarchicalMesh = hierarchicalMesh
-                layoutRight.addWidget(setupMeshUiElements(mesh,mesh.filename))
+                meshBox, projectBox = setupMeshUiElements(mesh,mesh.filename)
+
+                meshGroupLayout.addWidget(meshBox)
+                meshGroupLayout.addWidget(projectBox)
+                meshGroupLayout.addWidget(hierarchicalMesh.label)
+
+            borderColor = '#%02X%02X%02X' % (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            meshGroupBox.setObjectName("meshGroup")#{}".format(level))
+            meshGroupBox.setStyleSheet("QWidget#meshGroup" + " {border: 1px solid " + borderColor + ";}")
+            layoutRight.addWidget(meshGroupBox)
 
             ren.RemoveAllViewProps()
             if renderStructuresButton.isChecked():
@@ -481,8 +542,6 @@ class Ui_MainWindow(object):
                 org.hierarchical_mesh_anchor.renderPaperMeshes(ren)
 
         def setupMeshUiElements(mesh,name):
-
-            meshGroupBox = QtWidgets.QGroupBox()
 
             label = QtWidgets.QLabel(name.split("/")[-1])
             colorBt = QtWidgets.QPushButton("Color")
@@ -501,8 +560,8 @@ class Ui_MainWindow(object):
                 green = colorDialog.currentColor().green()
                 blue = colorDialog.currentColor().blue()
                 mesh.setColor([red/ 255, green/ 255, blue/ 255])
-                borderColor = '#%02X%02X%02X' % (red,green,blue)
-                meshGroupBox.setStyleSheet("QWidget#meshGroup{}".format(level) + " {border: 1px solid " + borderColor + ";}")
+                #borderColor = '#%02X%02X%02X' % (red,green,blue)
+                #meshGroupBox.setStyleSheet("QWidget#meshGroup{}".format(level) + " {border: 1px solid " + borderColor + ";}")
                 self.vtkWidget.update()
 
             def onColorButton():
@@ -541,20 +600,6 @@ class Ui_MainWindow(object):
             colorDialog.currentColorChanged.connect(onColorSelect)
             colorBt.clicked.connect(onColorButton)
 
-            #----
-            if self.numberOfLoadedStructures % 3 == 0:
-                levelColor = '#%02X%02X%02X' % (0, 255, 255)
-            elif self.numberOfLoadedStructures % 3 == 1:
-                levelColor = '#%02X%02X%02X' % (255, 0, 255)
-            elif self.numberOfLoadedStructures % 3 == 2:
-                levelColor = '#%02X%02X%02X' % (255, 255, 0)
-            level = mesh.hierarchicalMesh.getLevel()
-
-            meshGroupBox.setObjectName("meshGroup{}".format(level))
-            meshGroupBox.setStyleSheet("QWidget#meshGroup{}".format(level)+" {border: 1px solid " + levelColor + ";}")
-            meshGroupLayout = QtWidgets.QVBoxLayout()
-            meshGroupBox.setLayout(meshGroupLayout)
-
             meshBox = QtWidgets.QGroupBox()
             meshLayout = QtWidgets.QHBoxLayout()
             meshBox.setLayout(meshLayout)
@@ -571,9 +616,9 @@ class Ui_MainWindow(object):
             projectLayout.addWidget(cube)
             projectLayout.minimumSize()
 
-            meshGroupLayout.addWidget(meshBox)
-            meshGroupLayout.addWidget(projectBox)
-            return meshGroupBox
+            #meshGroupLayout.addWidget(meshBox)
+            #meshGroupLayout.addWidget(projectBox)
+            return meshBox, projectBox
 
     def isfloat(self, value):
         try:
@@ -641,6 +686,8 @@ class SimpleView(QtWidgets.QMainWindow):
         self.ui.vtkWidget.GetRenderWindow().SetAlphaBitPlanes(True)
         #org.multiplyingActors()
         org.setUp()
+
+
 
 def UpdateColorFilter(caller, ev):
     if UpdateColorFilter.run:

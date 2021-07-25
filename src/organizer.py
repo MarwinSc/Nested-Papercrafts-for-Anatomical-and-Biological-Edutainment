@@ -255,6 +255,7 @@ class Organizer():
         '''
         self.hierarchical_mesh_anchor.unfoldWholeHierarchy(iterations)
 
+    '''
     def importUnfoldedMeshPass(self, name):
         #deprecated
         self.hierarchical_mesh_anchor.unfoldedActor = self.meshProcessor.importUnfoldedMesh(name)
@@ -264,6 +265,7 @@ class Organizer():
         #deprecated
         filename = os.path.join(self.dirname, "../out/3D/papermesh.obj")
         self.hierarchical_mesh_anchor.papermesh = util.readObj(filename)
+    '''
 
     def project(self, hierarchy, resolution):
         '''
@@ -398,8 +400,50 @@ class Organizer():
         self.renderers[renId].AddActor(actor)
     '''
 
+    def clearOutputDirectory(self):
+        '''
+        Deletes all files in the "out/3D" folder, the "unfolded" subdirectory remains untouched.
+        :return:
+        '''
+        directory = os.path.join(self.dirname, "../out/3D")
+        for entry in os.scandir(directory):
+            if entry.is_file():
+                os.remove(entry.path)
+
+        #dirName = os.path.join(directory,"/unfolded")
+        #os.mkdir(dirName)
+
     def boolean(self):
         self.hierarchical_mesh_anchor.recursive_difference()
 
     def onUnfoldTest(self):
         self.meshProcessor.unfoldTest(name="lower")
+
+    def writeObjMeshes(self):
+        self.meshProcessor.writeObjMeshes(self.hierarchical_mesh_anchor)
+
+    def renderCutPlanes(self, viewpoints, bds):
+        for i in range(len(viewpoints)):
+            plane = vtk.vtkPlaneSource()
+            x0, y0, z0 = (bds[i][1]-abs(bds[i][0]))/2., (bds[i][3]-abs(bds[i][2]))/2., (bds[i][5]-abs(bds[i][4]))/2.
+            plane.SetCenter(x0,y0,z0)
+            plane.SetNormal(viewpoints[i][0],viewpoints[i][1],viewpoints[i][2])
+            plane.Update()
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputData(plane.GetOutput())
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.SetScale(50.0,50.0,50.0)
+            actor.GetProperty().SetColor(1.0,0.0,0.0)
+
+            self.ren.AddActor(actor)
+
+    def cutHM(self, viewpoints, bds):
+        self.hierarchical_mesh_anchor.addCutPlanes(viewpoints, bds)
+        #self.hierarchical_mesh_anchor.cut()
+        self.hierarchical_mesh_anchor.recursive_difference()
+
+    def onCutTest(self):
+        self.hierarchical_mesh_anchor.recursive_difference()
+

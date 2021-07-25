@@ -98,6 +98,7 @@ def writeStl(mesh,name):
     filename = os.path.join(dirname, "../out/3D/"+name+".stl")
     stlWriter = vtk.vtkSTLWriter()
     stlWriter.SetFileName(filename)
+    mesh = cleanMesh(mesh)
     stlWriter.SetInputData(mesh)
     stlWriter.Write()
 
