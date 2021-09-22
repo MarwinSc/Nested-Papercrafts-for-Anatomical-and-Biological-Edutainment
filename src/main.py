@@ -188,7 +188,7 @@ class Ui_MainWindow(object):
             writer.Write()
 
         unfoldIterationsTextfield = QtWidgets.QLineEdit()
-        unfoldIterationsTextfield.setText("100")
+        unfoldIterationsTextfield.setText("50000")
 
         saveVPtoImageButton = QtWidgets.QPushButton("Save as Image")
         saveVPtoImageButton.clicked.connect(onSaveVpToImage)
@@ -197,7 +197,7 @@ class Ui_MainWindow(object):
             try:
                 iterations = int(unfoldIterationsTextfield.text())
             except:
-                iterations = 100
+                iterations = 50000
             org.unfoldPaperMeshPass(iterations)
             self.vtkWidget.update()
 
@@ -212,8 +212,10 @@ class Ui_MainWindow(object):
                 width = int(resolutionWidth.text())
             except:
                 width = 500
-            org.projectPass(resolution = [width, width])
+            org.project(resolution = [width, width])
             #org.projectPassTemp()
+            if renderPaperMeshesButton.isChecked():
+                org.hierarchical_mesh_anchor.renderPaperMeshes(ren)
             self.vtkWidget.update()
 #            self.centralWidget.update()
 
@@ -222,50 +224,6 @@ class Ui_MainWindow(object):
 
         importTextfield = QtWidgets.QLineEdit()
         importTextfield.setText("model")
-        '''
-        def onImport():
-            org.importUnfoldedMeshPass(importTextfield.text())
-            self.vtkWidget.GetRenderWindow().Render()
-        importButton = QtWidgets.QPushButton("Import .obj Papermesh")
-        importButton.clicked.connect(onImport)
-
-        def onImportAnchorPaperMesh():
-            org.importPapermeshAnchor()
-
-        importAnchorPapermeshButton = QtWidgets.QPushButton("Import Paper Mesh for Anchor")
-        importAnchorPapermeshButton.clicked.connect(onImportAnchorPaperMesh)
-
-        
-        def onFlatten():
-            #for i in range(len(self.pickedIds[0])):
-            self.resultRenderes = org.onFlatten(self.pickedIds,self.inflateStruc)
-            self.countOfPickedRegions = 0
-            self.vtkWidget.GetRenderWindow().Render()
-            for i in self.pickedIds:
-                i.clear()
-                i.append([])
-
-        flattenButton = QtWidgets.QPushButton("Flatten")
-        flattenButton.clicked.connect(onFlatten)
-
-        def onFinish():
-            org.finish()
-        finishButton = QtWidgets.QPushButton("Finish")
-        finishButton.clicked.connect(onFinish)
-        '''
-
-        def onRegionSelection():
-            for i in range(3):
-                self.pickedIds[i].append([])
-            self.countOfPickedRegions += 1
-        selectRegionButton = QtWidgets.QPushButton("Select Regions")
-        selectRegionButton.clicked.connect(onRegionSelection)
-
-        booleanButton = QtWidgets.QPushButton("Boolean")
-
-        def onBoolean():
-            org.difference()
-        booleanButton.clicked.connect(onBoolean)
 
         hierarchySlider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         hierarchySlider.setRange(1, 4)
@@ -300,6 +258,7 @@ class Ui_MainWindow(object):
         renderPaperMeshesButton = QtWidgets.QPushButton("Render PaperMeshes")
         renderPaperMeshesButton.setCheckable(True)
         renderPaperMeshesButton.setChecked(True)
+
         def onRenderStructures():
             if not renderStructuresButton.isChecked():
                 ren.RemoveAllViewProps()
@@ -308,7 +267,6 @@ class Ui_MainWindow(object):
             else:
                 org.hierarchical_mesh_anchor.renderStructures(ren)
             self.vtkWidget.GetRenderWindow().Render()
-
 
         def onRenderPaperMeshes():
             if not renderPaperMeshesButton.isChecked():
@@ -332,18 +290,24 @@ class Ui_MainWindow(object):
             org.renderCutPlanes(viewpoints,bounds)
             org.cutHM(viewpoints, bounds)
 
+            self.vtkWidget.update()
+
         entropyButton.clicked.connect(onEntropy)
 
 
-        testCutButton = QtWidgets.QPushButton("Test Cut")
+        writeUnfoldedButton = QtWidgets.QPushButton("Write Unfolded Meshes")
         def onTestCut():
-            org.onCutTest()
-        testCutButton.clicked.connect(onTestCut)
+            org.writeUnfolded()
+        writeUnfoldedButton.clicked.connect(onTestCut)
 
-        testUnfoldButton = QtWidgets.QPushButton("Test Unfold")
+        importUnfoldedButton = QtWidgets.QPushButton("Import Unfolded Meshes")
+        def onImportUnfolded():
+            org.importUnfolded()
+        importUnfoldedButton.clicked.connect(onImportUnfolded)
+
+        testUnfoldButton = QtWidgets.QPushButton("Test Labels")
         def onTestUnfold():
-            org.onUnfoldTest()
-
+            org.project_test()
         testUnfoldButton.clicked.connect(onTestUnfold)
 
         """
@@ -416,12 +380,7 @@ class Ui_MainWindow(object):
         layoutCg.addWidget(renderBox)
 
         #import
-        #importGroup = QtWidgets.QGroupBox()
-        #importLayout = QtWidgets.QVBoxLayout()
-        #importGroup.setLayout(importLayout)
 
-        #importLayout.addWidget(importButton)
-        #importLayout.addWidget(importTextfield)
 
         paperCreationBox = QtWidgets.QGroupBox()
         paperCreationLayout = QtWidgets.QVBoxLayout()
@@ -429,17 +388,9 @@ class Ui_MainWindow(object):
         paperCreationLayout.addWidget(entropyButton)
         paperCreationLayout.addWidget(unfoldPaperMeshButton)
         paperCreationLayout.addWidget(unfoldIterationsTextfield)
-        #paperCreationLayout.addWidget(importGroup)
         paperCreationLayout.addWidget(projectPerTriangle)
         paperCreationLayout.addWidget(resolutionWidth)
         paperCreationLayout.addWidget(brightMultiplicationButton)
-
-        #editBox = QtWidgets.QGroupBox()
-        #editLayout = QtWidgets.QVBoxLayout()
-        #editBox.setLayout(editLayout)
-        #editLayout.addWidget(flattenButton)
-        #editLayout.addWidget(selectRegionButton)
-        #editLayout.addWidget(finishButton)
 
         #Insert Groups
         layoutLeft.addWidget(camGroup)
@@ -457,7 +408,8 @@ class Ui_MainWindow(object):
         debugBox_Layout.addWidget(hierarchical_difference_button)
         debugBox_Layout.addWidget(testButton)
         debugBox_Layout.addWidget(treeToStringButton)
-        debugBox_Layout.addWidget(testCutButton)
+        debugBox_Layout.addWidget(writeUnfoldedButton)
+        debugBox_Layout.addWidget(importUnfoldedButton)
         debugBox_Layout.addWidget(testUnfoldButton)
         #debugBox_Layout.addWidget(importAnchorPapermeshButton)
 
@@ -495,6 +447,9 @@ class Ui_MainWindow(object):
             meshGroupLayout.addWidget(projectBox)
             meshGroupLayout.addWidget(mesh.hierarchicalMesh.label)
 
+            mesh.hierarchicalMesh.setUpAdditionalUiElements()
+            meshGroupLayout.addWidget(mesh.hierarchicalMesh.ui_elements_box)
+
             layoutRight.addWidget(meshGroupBox)
 
             ren.RemoveAllViewProps()
@@ -527,7 +482,11 @@ class Ui_MainWindow(object):
 
                 meshGroupLayout.addWidget(meshBox)
                 meshGroupLayout.addWidget(projectBox)
-                meshGroupLayout.addWidget(hierarchicalMesh.label)
+
+            meshGroupLayout.addWidget(hierarchicalMesh.label)
+
+            hierarchicalMesh.setUpAdditionalUiElements()
+            meshGroupLayout.addWidget(hierarchicalMesh.ui_elements_box)
 
             borderColor = '#%02X%02X%02X' % (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
             meshGroupBox.setObjectName("meshGroup")#{}".format(level))
@@ -546,7 +505,7 @@ class Ui_MainWindow(object):
             label = QtWidgets.QLabel(name.split("/")[-1])
             colorBt = QtWidgets.QPushButton("Color")
             colorDialog = QtWidgets.QColorDialog()
-            opacity = QtWidgets.QLineEdit("0.5")
+            opacity = QtWidgets.QLineEdit("1.0")
 
             def onOpacityChange():
                 if self.isfloat(opacity.text()):

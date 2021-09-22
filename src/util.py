@@ -57,6 +57,14 @@ def NpToVtk(img,dx,dy,dz):
     resultImg.GetPointData().SetScalars(vtkResult)
     return resultImg
 
+def VtkToNp(img):
+    width = img.GetExtent()[1] + 1
+    height = img.GetExtent()[3] + 1
+    img = numpy_support.vtk_to_numpy(img.GetPointData().GetScalars())[:, 0:3]
+    img.astype(float)
+    img = np.reshape(np.ravel(img), (width, height, 3))
+    return img
+
 def writeImage(img, path):
     castFilter = vtk.vtkImageCast()
     castFilter.SetInputData(img)
@@ -185,11 +193,13 @@ def smoothMesh(mesh,secondMesh = None,iterations = 15,relaxation = 0.1):
 
     return smooth.GetOutput()
 
-def cleanMesh(mesh):
+def cleanMesh(mesh,tolerance = 0.0):
     clean = vtk.vtkCleanPolyData()
     clean.SetInputData(mesh)
+    clean.SetTolerance(tolerance)
     clean.Update()
     return clean.GetOutput()
+
 
 def cleanedMeshToMeshWithDoubleVertices(mesh):
 
@@ -221,6 +231,61 @@ def cleanedMeshToMeshWithDoubleVertices(mesh):
 
     return newGeometry
 
+def projectMeshToBoundsAlongCubeNormals(mesh):
+    bounds = mesh.GetBounds()
+    width = bounds[1] - bounds[0]
+    depth = bounds[3] - bounds[2]
+    height = bounds[5] - bounds[4]
+
+    newGeometry = vtk.vtkPolyData()
+    newPoints = vtk.vtkPoints()
+    newCells = vtk.vtkCellArray()
+
+    hull = vtk.vtkHull()
+    hull.SetInputData(mesh)
+    hull.AddCubeFacePlanes()
+    hull.Update()
+
+    centersFilter = vtk.vtkCellCenters()
+    centersFilter.SetInputData(mesh)
+    centersFilter.VertexCellsOn()
+    centersFilter.Update()
+
+    cellLocator = vtk.vtkCellLocator()
+    cellLocator.SetDataSet(hull.GetOutput())
+    cellLocator.BuildLocator()
+
+    for i in range(centersFilter.GetOutput().GetNumberOfPoints()):
+        p = [0.0, 0.0, 0.0]
+        centersFilter.GetOutput().GetPoint(i, p)
+        triCell = vtk.vtkTriangle()
+
+        '''
+
+        #for each point
+        for j in range(3):
+
+            absCoords = [abs(coord) for coord in points.GetPoint(j)]
+            indexOfHighest = absCoords.index(max(absCoords))
+
+            p1 = list(points.GetPoint(j))
+            p2 = [p1[0] + (normals.GetTuple(i)[0] * 100.0), p1[1] + (normals.GetTuple(i)[1] * 100.0), p1[2] + (normals.GetTuple(i)[2] * 100.0)]
+
+            tolerance = 0.1
+
+            t = vtk.mutable(0)
+            x = [0.0, 0.0, 0.0]
+            pcoords = [0.0, 0.0, 0.0]
+            subId = vtk.mutable(0)
+            cellLocator.IntersectWithLine(p1, p2, tolerance, t, x, pcoords, subId)
+
+            pointId = newPoints.InsertNextPoint(tuple(x))
+            triCell.GetPointIds().SetId(j, pointId)
+        '''
+        newCells.InsertNextCell(triCell)
+
+        newGeometry.SetPoints(newPoints)
+        newGeometry.SetPolys(newCells)
 
 def projectMeshToBounds(mesh):
 
@@ -291,6 +356,8 @@ def projectMeshToBounds(mesh):
     newGeometry.SetPolys(newCells)
 
     newGeometry = smoothMesh(newGeometry, hull.GetOutput())
+
+    
 
     return newGeometry
 

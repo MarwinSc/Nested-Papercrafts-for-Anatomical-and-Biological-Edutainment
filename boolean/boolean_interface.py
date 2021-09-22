@@ -16,9 +16,13 @@ class Boolean_Interface(object):
         self.boolean_interface._boolean.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
         self.boolean_interface._boolUnion.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
         self.boolean_interface._triangulateCut.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float,ctypes.c_float,ctypes.c_float, ctypes.c_float,ctypes.c_float,ctypes.c_float]
+        self.boolean_interface._merge.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float, ctypes.c_float,ctypes.c_float,ctypes.c_float, ctypes.c_float,ctypes.c_float,ctypes.c_float]
 
         self.obj = self.boolean_interface._boolean_interface()
 
+    def merge_adjacent_vertices_by_distance(self,path, threshold, normal_x,normal_y,normal_z, origin_x, origin_y, origin_z):
+
+        self.boolean_interface._merge(self.obj, path.encode(), threshold, normal_x, normal_y, normal_z, origin_x, origin_y, origin_z)
 
     def triangulateCut(self,path,normal_x,normal_y,normal_z, origin_x, origin_y, origin_z):
         """

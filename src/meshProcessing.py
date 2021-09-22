@@ -33,22 +33,25 @@ class MeshProcessing():
         util.meshioIO(inpath,outpath)
 
         graph.load(outpath)
-        if not graph.unfold(iterations, 0):
+        while not graph.unfold(iterations, 0):
             #msgBox = QtWidgets.QMessageBox()
             #msgBox.setText("failed to unfold :( in {} iterations".format(iterations))
             #msgBox.exec()
-            return None
+            print("failed to unfold :( in {} iterations".format(iterations))
         else:
             print("succesfully unfolded :) in {} iterations".format(iterations))
 
             filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
             gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
+            gluetabs_mirrored_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj")
 
             graph.save(filename, gluetabs_filename)
 
             filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
             mesh = util.readObj(filename)
-            mesh = self.normalizeUV(mesh)
+            tCoords = mesh.GetPointData().GetTCoords()
+
+            #mesh = self.normalizeUV(mesh)
             mesh = self.calcMeshNormals(mesh)
 
             mapper = vtk.vtkPolyDataMapper()
@@ -64,31 +67,6 @@ class MeshProcessing():
             util.writeObj(actor.GetMapper().GetInput(), "unfolded/model")
             return actor
 
-    '''
-    def createDedicatedMeshes(self, hierarchy):
-
-        meshes = hierarchy.meshes
-        for a in range(len(meshes)):
-
-            if meshes[a].projectionMethod == ProjectionStructure.ProjectionMethod.Inflate:
-                mesh = hierarchy.unfoldedActor.GetMapper().GetInput()
-                mesh = util.smoothMesh(mesh,meshes[a].mesh,iterations=15,relaxation=0.1)
-                poly = mesh
-
-            elif meshes[a].projectionMethod == ProjectionStructure.ProjectionMethod.Cube:
-                poly = util.projectMeshToBounds(hierarchy.unfoldedActor.GetMapper().GetInput())
-
-            elif meshes[a].projectionMethod == ProjectionStructure.ProjectionMethod.Clipping:
-                poly = hierarchy.unfoldedActor.GetMapper().GetInput()
-
-            mapper = vtk.vtkPolyDataMapper()
-            mapper.SetInputData(poly)
-
-            actor = vtk.vtkActor()
-            actor.SetMapper(mapper)
-
-            meshes[a].projectionActor = actor
-    '''
 
     def createDedicatedMesh(self,mesh,unfolded):
         '''
@@ -98,14 +76,16 @@ class MeshProcessing():
         :return:
         '''
         if mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Inflate:
-            mesh = util.smoothMesh(unfolded.GetMapper().GetInput(), mesh, iterations=15, relaxation=0.1)
+            mesh = util.smoothMesh(unfolded.GetMapper().GetInput(), mesh.mesh , iterations=15, relaxation=0.1)
             poly = mesh
 
         elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Cube:
-            poly = util.projectMeshToBounds(unfolded.GetMapper().GetInput())
+            poly = util.projectMeshToBoundsAlongCubeNormals(unfolded.GetMapper().GetInput())
+            util.writeStl(poly,"cubeDedicatedMesh")
 
         elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Clipping:
-            poly = unfolded.GetMapper().GetInput()
+            mesh = util.cleanMesh(unfolded.GetMapper().GetInput())
+            poly = mesh
 
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(poly)

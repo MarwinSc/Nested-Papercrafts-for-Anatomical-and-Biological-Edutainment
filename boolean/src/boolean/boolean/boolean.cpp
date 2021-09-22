@@ -224,7 +224,29 @@ namespace ae{
 		output << mesh;
 	}
 
+	void boolean_interface::merge(std::string first, float threshold, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z) {
+	
+		std::cout << first << std::endl;
+		const char* filename1 = first.c_str();
+		std::ifstream input(filename1);
+		Mesh mesh;
+		if (!input || !(input >> mesh))
+		{
+			std::cerr << "First mesh is not a valid off file." << std::endl;
+		}
+		input.close();
 
+		K::Plane_3 cut_plane = K::Plane_3(K::Point_3(o_x, o_y, o_z), K::Vector_3(n_x, n_y, n_z));
+		mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
+		mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
+
+		mesh.collect_garbage();
+		std::ofstream output("../out/3D/merged.off");
+		output.precision(17);
+		output << mesh;
+		output.close();
+		output.clear();
+	}
 
 	void boolean_interface::triangulateCut(std::string first, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z) {
 		std::cout << first << std::endl;
@@ -479,7 +501,7 @@ namespace ae{
 
 	Mesh boolean_interface::merge_vertices_by_distance(Mesh first_mesh, double threshold, K::Plane_3 cut_plane) {
 
-		std::vector<edge_descriptor> shortEdges;
+		int count = 0;
 
 		Mesh::Property_map<vertex_descriptor, K::Point_3> location = first_mesh.points();
 		Mesh::Vertex_range range = first_mesh.vertices();
@@ -493,51 +515,43 @@ namespace ae{
 
 			do {
 				vertex_descriptor vd2 = *vbegin++;
-				std::cout << vd << " to " << vd2 << std::endl;
+				//std::cout << vd << " to " << vd2 << std::endl;
 				float distance = CGAL::squared_distance(location[vd], location[vd2]);
 				//check distance, all other conditions most likely got obsolete
 				if (distance < threshold && (vd != vd2) && !(first_mesh.is_removed(vd)) && !(first_mesh.is_removed(vd2))) {
 
-					edge_descriptor edge = first_mesh.edge(first_mesh.halfedge(vd, vd2));
+					K::Point_3 loc = location[vd];
+					K::Point_3 loc2 = location[vd2];
+					//std::cout << vd << " at " << loc[2] << std::endl;
+					//std::cout << " to " << std::endl;
+					//std::cout << vd2 << " at " << loc2[2] << std::endl;
+					//std::cout << "has length " << distance << std::endl;
 
-					//edge already in the list of short edges 
-					//obsolete
-					if (std::count(shortEdges.begin(), shortEdges.end(), edge)) {
-						std::cout << "Element found: " << edge << std::endl;
+					//vertex merge
+					vertex_descriptor new_vd = CGAL::Euler::collapse_edge(first_mesh.edge(first_mesh.halfedge(vd, vd2)), first_mesh);
+
+					count++;
+					//CGAL::Euler::join_vertex(first_mesh.halfedge(vd2, vd), first_mesh);
+
+
+					K::Point_3 point = first_mesh.point(new_vd);
+					if (!cut_plane.has_on(point)) {
+						first_mesh.point(new_vd) = cut_plane.projection(point);
 					}
-					else {
-
-						K::Point_3 loc = location[vd];
-						K::Point_3 loc2 = location[vd2];
-						std::cout << vd << " at " << loc[2] << std::endl;
-						std::cout << " to " << std::endl;
-						std::cout << vd2 << " at " << loc2[2] << std::endl;
-						std::cout << "has length " << distance << std::endl;
-
-						//vertex merge
-						vertex_descriptor new_vd = CGAL::Euler::collapse_edge(first_mesh.edge(first_mesh.halfedge(vd, vd2)), first_mesh);
-						//CGAL::Euler::join_vertex(first_mesh.halfedge(vd2, vd), first_mesh);
-
-
-						K::Point_3 point = first_mesh.point(new_vd);
-						if (!cut_plane.has_on(point)) {
-							first_mesh.point(new_vd) = cut_plane.projection(point);
-						}
-						//if the source is lower than the target assign its z coordinate to target.
-						//if (loc[2] > loc2[2]) {
-						//	first_mesh.point(new_vd) = K::Point_3(loc[0], loc[1], loc2[2]);
-						//}
-						//repeat once more for the current vertex because of merge
-						vb--;
-						break;
-					}
-
+					//if the source is lower than the target assign its z coordinate to target.
+					//if (loc[2] > loc2[2]) {
+					//	first_mesh.point(new_vd) = K::Point_3(loc[0], loc[1], loc2[2]);
+					//}
+					//repeat once more for the current vertex because of merge
+					vb--;
+					break;
 				}
 			} while (vbegin != done);
 		}
 
 		first_mesh.collect_garbage();
 		std::cout << "Merge was successfully computed\n";
+		std::cout << "Removed Vertices: " << count << std::endl;
 		std::ofstream output("../out/3D/merged_vertices.off");
 		output.precision(17);
 		output << first_mesh;
@@ -653,4 +667,9 @@ void __stdcall _boolUnion(ae::boolean_interface* g, char* first, char* second)
 void __stdcall _triangulateCut(ae::boolean_interface* g, char* first, float x, float y, float z, float o_x, float o_y, float o_z)
 {
 	g->triangulateCut(std::string(first), x, y, z, o_x, o_y, o_z);
+}
+
+void __stdcall _merge(ae::boolean_interface * g, char* first, float t, float x, float y, float z, float o_x, float o_y, float o_z)
+{
+	g->merge(std::string(first), t, x, y, z, o_x, o_y, o_z);
 }

@@ -7,10 +7,6 @@ import util
 #Class responsible for 2D image related processing steps.
 class ImageProcessor():
 
-    def __init__(self,width,height):
-        self.width = width
-        self.height = height
-
     width = 2000
     height = 2000
 

@@ -1,7 +1,6 @@
 import vtkmodules.all as vtk
 import os
 from meshProcessing import MeshProcessing
-from projector import Projector
 from imageProcessing import ImageProcessor
 import util
 from mu3d.mu3dpy.mu3d import Graph
@@ -25,8 +24,7 @@ class Organizer():
     width = 2000
 
     meshProcessor = MeshProcessing()
-    projector = Projector()
-    imageProcessor = ImageProcessor(height,width)
+    imageProcessor = ImageProcessor()
 
 
     camera = vtk.vtkCamera()
@@ -158,51 +156,12 @@ class Organizer():
         writer.SetInputConnection(resultCast.GetOutputPort())
         writer.Write()
         self.finish()
-    '''
-    def addMesh(self, mesh, parent, childId):
-        
-        Method that manages adding a mesh to the hierarchy by either:
-        Create a hierarchical mesh and initialize the tree,
-        create a hierarchical mesh and add as child,
-        append a mesh to level 0,
-        append a mesh to a child.
 
-        :param mesh: the new mesh.
-        :param parent: if given, the parent mesh.
-        :param childId: the list id of the child to which the mesh is appended.
-        :return: the hierarchical mesh that was created/updated.
-        
-        self.ren.RemoveAllViewProps()
 
-        if hasattr(self,"hierarchical_mesh_anchor"):
-            if parent:
-                # append as new child
-                if childId < 0 or len(parent.children) == 0:
-                    hierarchicalMesh = HierarchicalMesh(parent,mesh,self.meshProcessor)
-                    parent.children.append(hierarchicalMesh)
-                    self.hierarchical_mesh_anchor.renderStructures(self.ren)
-                    self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
-                    return hierarchicalMesh
-                # append to the meshes of a child
-                else:
-                    parent.children[childId].appendMesh(mesh)
-                    self.hierarchical_mesh_anchor.renderStructures(self.ren)
-                    self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
-                    return parent.children[childId]
-            # add at level 0
-            else:
-                self.hierarchical_mesh_anchor.appendMesh(mesh)
-                self.hierarchical_mesh_anchor.renderStructures(self.ren)
-                self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
-                return self.hierarchical_mesh_anchor
-        # initialize Tree
-        else:
-            self.hierarchical_mesh_anchor = HierarchicalMesh(None,mesh,self.meshProcessor)
-            self.hierarchical_mesh_anchor.renderStructures(self.ren)
-            self.hierarchical_mesh_anchor.renderPaperMeshes(self.ren)
-            return self.hierarchical_mesh_anchor
-    '''
     def addMesh(self, meshes):
+        '''
+        Adds a new hierarchicalMesh object to the hierarchy.
+        '''
         newHierarchicalMesh = HierarchicalMesh(None,meshes,self.meshProcessor)
         self.hierarchical_mesh_anchor.add(newHierarchicalMesh)
         return newHierarchicalMesh
@@ -255,25 +214,16 @@ class Organizer():
         '''
         self.hierarchical_mesh_anchor.unfoldWholeHierarchy(iterations)
 
-    '''
-    def importUnfoldedMeshPass(self, name):
-        #deprecated
-        self.hierarchical_mesh_anchor.unfoldedActor = self.meshProcessor.importUnfoldedMesh(name)
-        self.meshProcessor.createDedicatedMeshes(self.hierarchical_mesh_anchor)
 
-    def importPapermeshAnchor(self):
-        #deprecated
-        filename = os.path.join(self.dirname, "../out/3D/papermesh.obj")
-        self.hierarchical_mesh_anchor.papermesh = util.readObj(filename)
-    '''
+    def project(self,resolution=[500,500]):
+        self.hierarchical_mesh_anchor.project(resolution,0)
 
-    def project(self, hierarchy, resolution):
-        '''
-        Calls the projectPerTriangle() and createUnfoldedPaperMesh() from the projector class.
-        :param hierarchy:
-        :param resolution:
-        :return:
-        '''
+    def project_test(self):
+        self.hierarchical_mesh_anchor.createLabels()
+
+    '''
+    def project_old(self, hierarchy, resolution):
+
         resultMeshes = []
         idx = 0
         meshes = hierarchy.getAllMeshes(asActor=False)
@@ -306,8 +256,6 @@ class Organizer():
         texture = vtk.vtkTexture()
         texture.SetInputConnection(imageReader.GetOutputPort())
 
-
-
         hm.unfoldedActor.SetTexture(texture)
         hm.unfoldedActor.Modified()
 
@@ -336,11 +284,7 @@ class Organizer():
         return self.renderers
 
     def finish(self):
-        '''
-        #todo whole hierarchy not just level 1 child 1
-        Loads the final multiplied texture and assigns it to the papermesh.
-        :return:
-        '''
+
         if hasattr(self, "renderers"):
             for ren in self.renderers:
                 ren.SetViewport(self.noViewport)
@@ -361,13 +305,7 @@ class Organizer():
         self.ren.AddActor(hm.unfoldedActor)
 
     def setUpResultRenderers(self, camera, maxNofChilds):
-        '''
-        sets up the horizontally concatenated renderers for each projected structure.
-        #todo, set up renderers for nested structures below level zero.
-        :param camera:
-        :param maxNofChilds:
-        :return:
-        '''
+
         renderers = []
         width = 1.0 / maxNofChilds
         right = 0.0
@@ -384,20 +322,6 @@ class Organizer():
             left += width
 
         return renderers
-
-    '''
-    def onFlatten(self,pickerIds, inflateStruc):
-        for ren in self.renderers:
-            self.ren.GetRenderWindow().RemoveRenderer(ren)
-
-        self.meshProcessor.meshInteractor.improveCells(pickerIds)
-        self.projectPass()
-
-    def onGenerateColorMesh(self, renId, ids):
-        actor = self.meshProcessor.meshInteractor.generateColorMesh(renId,ids)
-        if self.renderers[renId].GetActors().GetNumberOfItems() > 1:
-            self.renderers[renId].RemoveActor(self.renderers[renId].GetActors().GetLastActor())
-        self.renderers[renId].AddActor(actor)
     '''
 
     def clearOutputDirectory(self):
@@ -412,9 +336,6 @@ class Organizer():
 
         #dirName = os.path.join(directory,"/unfolded")
         #os.mkdir(dirName)
-
-    def boolean(self):
-        self.hierarchical_mesh_anchor.recursive_difference()
 
     def onUnfoldTest(self):
         self.meshProcessor.unfoldTest(name="lower")
@@ -444,6 +365,8 @@ class Organizer():
         #self.hierarchical_mesh_anchor.cut()
         self.hierarchical_mesh_anchor.recursive_difference()
 
-    def onCutTest(self):
-        self.hierarchical_mesh_anchor.recursive_difference()
+    def writeUnfolded(self):
+        self.hierarchical_mesh_anchor.writeAllUnfoldedMeshesInHierarchy()
 
+    def importUnfolded(self):
+        self.hierarchical_mesh_anchor.importAllUnfoldedMeshesInHierarchy()

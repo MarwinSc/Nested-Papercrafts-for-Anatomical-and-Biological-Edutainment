@@ -10,7 +10,7 @@ class ProjectionStructure(object):
     ProjectionMethod = Enum('ProjectionMethod', 'Inflate Clipping Cube')
 
     color = [0.0,0.0,0.0]
-    opacity = 0.5
+    opacity = 1.0
     projectionActor = None
     projectionMethod = ProjectionMethod.Inflate
     hierarchicalMesh = None

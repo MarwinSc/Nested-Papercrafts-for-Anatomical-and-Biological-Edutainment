@@ -3,8 +3,11 @@ import trimesh
 from mim.mim import meshB_inside_meshA
 import vtkmodules.all as vtk
 import util
+import projector
+from imageProcessing import ImageProcessor
 from mu3d.mu3dpy.mu3d import Graph
 from boolean import boolean_interface
+from PyQt5 import QtWidgets
 
 class HierarchicalMesh(object):
     """
@@ -27,6 +30,7 @@ class HierarchicalMesh(object):
         self.children = []
         self.parent = parent
         self.meshProcessor = meshProcessor
+        self.imageProcessor = ImageProcessor()
 
         # new sub node of the tree
         if meshes:
@@ -47,6 +51,10 @@ class HierarchicalMesh(object):
             self.name = 'Anchor'
             self.file = None
             self.offname = None
+
+        #list holding the unfolded pieces of the papermesh once cut and unfold
+        self.unfoldedActors = []
+        self.labels = []
 
     def setName(self,filename):
         '''
@@ -147,19 +155,11 @@ class HierarchicalMesh(object):
         """
         "Cuts" out children of this mesh from this mesh.
         Recursively "cuts" out children of children of children of children ...
+        Calls the cutsurface-triangulation for each mesh piece,
+        and updates the amount of Buttons in the GUI.
         :return: None
         """
         if self.mesh is not None and self.children:
-            final_mesh = trimesh.load(self.file)
-            for child in self.children:
-                tri_child = trimesh.load(child.file)
-                #final_mesh = final_mesh.difference(tri_child, engine='blender')
-                final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
-
-            filename = os.path.join(self.dirname, "../out/3D/differenced_" + self.name)
-            final_mesh.export(filename)
-
-            final_mesh_vtk = util.readStl(filename)
 
             #----cut planes
             #centerPoint = self.children[0].papermesh.GetCenter()
@@ -188,6 +188,56 @@ class HierarchicalMesh(object):
             planes.append(plane)
             '''
 
+            meshPieces = self.meshProcessor.cutMeshWithPlanes(self.papermesh, planes, None)
+            self.meshPieces = []
+
+            for i in range(len(meshPieces)):
+
+                fillHole = vtk.vtkFillHolesFilter()
+                fillHole.SetInputData(meshPieces[i])
+                fillHole.SetHoleSize(1000.0)
+                fillHole.Update()
+                normals = vtk.vtkPolyDataNormals()
+                normals.SetInputData(fillHole.GetOutput())
+                normals.ComputeCellNormalsOn()
+                normals.Update()
+                mesh = normals.GetOutput()
+                mesh = util.cleanMesh(mesh)
+
+                util.writeStl(mesh, "piece{}_".format(i) + self.name[:self.name.rfind('.')])
+                path = os.path.join(self.dirname, "../out/3D/piece{}_".format(i) + self.name)
+
+                # --------boolean difference
+                final_mesh = trimesh.load(path)
+                for child in self.children:
+                    tri_child = trimesh.load(child.file)
+                    # final_mesh = final_mesh.difference(tri_child, engine='blender')
+                    final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
+
+                filename = os.path.join(self.dirname, "../out/3D/differenced_{}_".format(i) + self.name)
+                final_mesh.export(filename)
+
+                normal = planes[i].GetNormal()
+                origin = planes[i].GetOrigin()
+                outPath = os.path.join(self.dirname, "../out/3D/differenced_{}_".format(i) + self.name[:self.name.rfind('.')]+".off")
+                util.meshioIO(filename, outPath)
+                boolean_interface.Boolean_Interface().merge_adjacent_vertices_by_distance(outPath, 10.0, -1.0 * float(normal[0]),-1.0 * float(normal[1]),-1.0 * float(normal[2]), float(origin[0]), float(origin[1]), float(origin[2]))
+                inPath = os.path.join(self.dirname, "../out/3D/merged.off")
+                outPath = os.path.join(self.dirname, "../out/3D/merged.stl")
+                util.meshioIO(inPath, outPath)
+
+
+                final_mesh_vtk = util.cleanMesh(util.readStl(outPath))
+                #util.writeStl(final_mesh_vtk, "debug_differenced_{}_".format(i) + self.name[:self.name.rfind('.')])
+
+                mapper = vtk.vtkPolyDataMapper()
+                mapper.SetInputData(final_mesh_vtk)
+                actor = vtk.vtkActor()
+                actor.SetMapper(mapper)
+                actor.GetProperty().SetOpacity(0.15)
+                self.meshPieces.append(actor)
+
+            '''
             meshPieces = self.meshProcessor.cutMeshWithPlanes(final_mesh_vtk, planes, None)
             paths = []
             paths2 = []
@@ -219,6 +269,10 @@ class HierarchicalMesh(object):
                 actor.SetMapper(mapper)
                 actor.GetProperty().SetOpacity(0.15)
                 self.meshPieces.append(actor)
+            '''
+            self.clearUiButtons()
+            for piece in self.meshPieces:
+                self.updateUiButtons(piece)
 
         # if all children are cut out save it and call boolean for children
         for child in self.children:
@@ -241,11 +295,20 @@ class HierarchicalMesh(object):
         :param renderer:
         :return:
         '''
-        if hasattr(self,"meshPieces"):
+        if self.unfoldedActors:
+            for actor in self.unfoldedActors:
+                renderer.AddActor(actor)
+
+        elif hasattr(self,"meshPieces"):
             for actor in self.meshPieces:
                 renderer.AddActor(actor)
+
+        elif hasattr(self,"unfoldedActor"):
+            renderer.AddActor(self.unfoldedActor)
+
         else:
             renderer.AddActor(self.mesh)
+
         for child in self.children:
             child.renderPaperMeshes(renderer)
 
@@ -276,6 +339,9 @@ class HierarchicalMesh(object):
         return actor
 
     def unfoldWholeHierarchy(self, iterations):
+        '''
+        Calls the respective unfolding methodology, depending on if the papermeshes were cut.
+        '''
         if hasattr(self,'meshPieces'):
             self.unfoldPaperMeshPieces(iterations)
         elif hasattr(self,'papermesh'):
@@ -286,40 +352,228 @@ class HierarchicalMesh(object):
     def unfoldPaperMesh(self, iterations):
         '''
         Calls the mu3dUnfoldPaperMesh() method of the given meshProcessor and afterward the createDedicatedPaperMesh()
-        to create a projectionMesh for each mesh in self.meshes.
+        to unfold self.papermesh.
         :param meshProcessor:
         :param iterations:
         :return:
         '''
-        idx = "{}_{}".format(self.getLevel(), self.getChildIdx())
-        self.writePapermeshStlAndOff(idx)
+        #idx = "{}_{}".format(self.getLevel(), self.getChildIdx())
+        #self.writePapermeshStlAndOff(idx)
         self.graph = Graph()
         unfoldedActor = self.meshProcessor.mu3dUnfoldPaperMesh(self.papermesh, self.graph, iterations)
         if unfoldedActor:
             self.label.setText("Unfolded")
             self.unfoldedActor = unfoldedActor
-            #for mesh in self.meshes:
-            #    mesh.dedicatedMeshes = [self.meshProcessor.createDedicatedMesh(mesh,unfoldedActor)]
+
+            # import labels
+            # for some reason crashes if imported as .obj
+            filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
+            outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
+            util.meshioIO(filename, outpath)
+            self.label = util.readStl(outpath)
 
     def unfoldPaperMeshPieces(self, iterations):
-        self.unfoldedActors = []
+        '''
+        Calls the mu3dUnfoldPaperMesh() method of the given meshProcessor and afterward the createDedicatedPaperMesh()
+        to unfold each mesh in self.meshPieces.
+        :param meshProcessor:
+        :param iterations:
+        :return:
+        '''
         unfoldedString = ""
         for i,piece in enumerate(self.meshPieces):
-            idx = "{}_{}_Piece{}".format(self.getLevel(), self.getChildIdx(), i)
-            self.writePapermeshStlAndOff(idx)
+            #idx = "{}_{}_Piece{}".format(self.getLevel(), self.getChildIdx(), i)
+            #self.writePapermeshStlAndOff(idx)
             self.graph = Graph()
             unfoldedActor = self.meshProcessor.mu3dUnfoldPaperMesh(piece.GetMapper().GetInput(), self.graph, iterations)
             if unfoldedActor:
                 unfoldedString += "Unfolded, "
                 self.unfoldedActors.append(unfoldedActor)
+
+                # import labels
+                # for some reason crashes if imported as .obj
+                filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
+                outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
+                util.meshioIO(filename, outpath)
+                self.labels.append(util.readStl(outpath))
+
             else:
                 unfoldedString += "Not Unfolded, "
         self.label.setText(unfoldedString)
 
-        #for mesh in self.meshes:
-        #    mesh.dedicatedMeshes = []
-        #    for actor in self.unfoldedActors:
-        #        mesh.dedicatedMeshes.append(self.meshProcessor.createDedicatedMesh(mesh, actor))
+    def project(self,resolution,idx,textureIdx = 0):
+        '''
+        Projects all anatomical structures of the hierarchy onto their respective unfolded papermesh.
+        Creating the unfolded paper template for each papermesh.
+        '''
+        if self.parent:
+
+            self.clearUiButtons()
+            previousImage = None
+            #creating unfoldings per mesh piece
+            if hasattr(self,"meshPieces"):
+                for unfolded_piece in self.unfoldedActors:
+
+                    for i, mesh in enumerate(self.meshes):
+
+                        dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh,unfolded_piece)
+                        projection = projector.projectPerTriangle(dedicatedMesh,mesh.getActor(),idx,resolution)
+                        img = projector.createUnfoldedPaperMesh(projection, unfolded_piece,self.labels[i], idx)
+                        #labels_img = util.VtkToNp(self.renderLabels())
+                        img = projector.mask(img)
+                        #texture = texture + label
+                        dy, dx, dz = img.shape
+                        img = util.NpToVtk(img, dx, dy, dz)
+
+                        if i > 0:
+                            previousImage = self.multiplyProjections(img, previousImage, textureIdx)
+                        else:
+                            previousImage = self.multiplyProjections(img, None, textureIdx)
+
+                        idx += 1
+
+                    filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(textureIdx))
+                    readerFac = vtk.vtkImageReader2Factory()
+                    imageReader = readerFac.CreateImageReader2(filename)
+                    imageReader.SetFileName(filename)
+                    texture = vtk.vtkTexture()
+                    texture.SetInputConnection(imageReader.GetOutputPort())
+
+                    unfolded_piece.GetMapper.SetInputData(self.meshProcessor.normalizeUV(unfolded_piece.GetMapper.GetInput()))
+
+                    unfolded_piece.SetTexture(texture)
+                    unfolded_piece.Modified()
+                    unfolded_piece.GetProperty().SetOpacity(1.0)
+
+                    textureIdx += 1
+
+                    self.updateUiButtons(unfolded_piece)
+
+            #create single unfolding if mesh isn't cut
+            else:
+                for i, mesh in enumerate(self.meshes):
+                    dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, self.unfoldedActor)
+                    projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
+                    img = projector.createUnfoldedPaperMesh(projection, self.unfoldedActor, self.label, idx)
+                    #labels_img = util.VtkToNp(self.renderLabels())
+                    img = projector.mask(img)
+                    #texture = texture + label
+                    dy, dx, dz = img.shape
+                    img = util.NpToVtk(img,dx,dy,dz)
+
+                    if i > 0:
+                        previousImage = self.multiplyProjections(img, previousImage, textureIdx)
+                    else:
+                        previousImage = self.multiplyProjections(img, None, textureIdx)
+
+                    idx += 1
+
+                filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(textureIdx))
+                readerFac = vtk.vtkImageReader2Factory()
+                imageReader = readerFac.CreateImageReader2(filename)
+                imageReader.SetFileName(filename)
+                texture = vtk.vtkTexture()
+                texture.SetInputConnection(imageReader.GetOutputPort())
+
+                self.unfoldedActor.GetMapper().SetInputData(self.meshProcessor.normalizeUV(self.unfoldedActor.GetMapper().GetInput()))
+
+                self.unfoldedActor.SetTexture(texture)
+                self.unfoldedActor.Modified()
+                self.unfoldedActor.GetProperty().SetOpacity(1.0)
+
+                textureIdx += 1
+
+                self.updateUiButtons(self.unfoldedActor)
+
+        for child in self.children:
+            child.project(resolution,idx,textureIdx)
+
+    def multiplyProjections(self,image,prev_image,idx):
+        '''
+        Multiplies a previously written image and a given image and writes the result to disk.
+        :param image: the previously written file
+        :param prev_image: the image to multiply with
+        :param idx: number to name the created image file.
+        '''
+        # multiply created unfoldings
+
+        imageDim = image.GetDimensions()
+        width = imageDim[0]
+        height = imageDim[1]
+        result = self.imageProcessor.optimizedBrighten(image, width, height)
+        if prev_image:
+            result = self.imageProcessor.normalizeMultiplication(prev_image, result, width,height).GetOutput()
+
+        writer = vtk.vtkPNGWriter()
+        filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(idx))
+        writer.SetFileName(filename)
+        writer.SetInputData(result)
+        writer.Write()
+        return result
+
+    def renderLabels(self):
+        trans = vtk.vtkTransform()
+        trans.RotateX(-90.)
+        trans.RotateZ(180.)
+        transform = vtk.vtkTransformPolyDataFilter()
+        transform.SetTransform(trans)
+        transform.SetInputData(self.label)
+        transform.Update()
+
+        edges = vtk.vtkFeatureEdges()
+        edges.SetInputData(transform.GetOutput())
+        edges.BoundaryEdgesOn()
+        edges.Update()
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(edges.GetOutput())
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(100.0, 100.0, 100.0)
+        actor.GetProperty().SetLineWidth(5.0)
+
+        camera = vtk.vtkCamera()
+        camera.SetPosition(0, -1200, 0)
+        camera.SetFocalPoint(0, 0, 0)
+        camera.SetViewUp(0, 0, 1)
+        camera.ParallelProjectionOn()
+        camera.SetParallelScale(500.0)
+        camera.SetClippingRange(0.1,1500)
+        ren, iren, renWin, wti = util.getbufferRenIntWin(camera, width=5000, height=5000)
+        renWin.SetOffScreenRendering(1)
+
+        ren.AddActor(actor)
+        renWin.Render()
+        wti.Update()
+
+        filename = os.path.join(self.dirname, "../out/2D/label.png")
+        util.writeImage(wti.GetOutput(),filename)
+
+        return wti.GetOutput()
+
+    def createLabels(self):
+        filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
+        outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
+        util.meshioIO(filename, outpath)
+        self.label = util.readStl(outpath)
+
+        filename = os.path.join(self.dirname, "../out/2D/texture2.png")
+        reader = vtk.vtkPNGReader()
+        reader.SetFileName(filename)
+        castFilter = vtk.vtkImageCast()
+        castFilter.SetInputConnection(reader.GetOutputPort())
+        castFilter.SetOutputScalarTypeToUnsignedChar()
+        castFilter.Update()
+        texture = util.VtkToNp(castFilter.GetOutput())
+
+        img = self.renderLabels()
+
+        labels = util.VtkToNp(img)
+        img = texture + labels
+
+        dy, dx, dz = img.shape
+        filename = os.path.join(self.dirname, "../out/2D/labels.png")
+        util.writeImage(util.NpToVtk(img, dx, dy, dz), filename)
 
     def getAllMeshes(self, asActor = True):
         '''
@@ -348,6 +602,56 @@ class HierarchicalMesh(object):
         util.meshioIO(inpath,outpath)
         return inpath
 
+    def writeAllUnfoldedMeshesInHierarchy(self):
+        '''
+        Writes the unfoldedMeshes of the whole hierarchy to the disk,
+        to be able to import them later on.
+        '''
+        if self.parent:
+            if hasattr(self,"meshPieces"):
+                for i,unfolded_piece in enumerate(self.unfoldedActors):
+                    util.writeObj(unfolded_piece.GetMapper().GetInput(),"unfolded_{}_piece_{}".format(self.getChildIdx(),i))
+            else:
+                util.writeObj(self.unfoldedActor.GetMapper().GetInput(),"unfolded_{}".format(self.getChildIdx()))
+        for child in self.children:
+            child.writeAllUnfoldedMeshesInHierarchy()
+
+    def importAllUnfoldedMeshesInHierarchy(self):
+        '''
+        Imports the unfoldedMeshes written in the previous session,
+        for debugging purposes.
+        '''
+        if self.parent:
+            directory = os.path.join(self.dirname, "../out/3D")
+            unfoldedString = ""
+            for filename in os.listdir(directory):
+                if hasattr(self, "meshPieces"):
+                    for i in range(len(self.meshPieces)):
+                        if filename == "unfolded_{}_piece_{}.obj".format(self.getChildIdx(),i):
+                            mesh = util.readObj(os.path.join(directory,filename))
+                            mapper = vtk.vtkPolyDataMapper()
+                            mapper.SetInputData(mesh)
+                            actor = vtk.vtkActor()
+                            actor.SetMapper(mapper)
+                            actor.GetProperty().SetOpacity(0.5)
+                            self.unfoldedActors.append(actor)
+                            unfoldedString += "Unfolded, "
+
+                else:
+                    if filename == "unfolded_{}.obj".format(self.getChildIdx()):
+                        mesh = util.readObj(os.path.join(directory, filename))
+                        mapper = vtk.vtkPolyDataMapper()
+                        mapper.SetInputData(mesh)
+                        actor = vtk.vtkActor()
+                        actor.SetMapper(mapper)
+                        actor.GetProperty().SetOpacity(0.5)
+                        self.unfoldedActor = actor
+                        unfoldedString = "Unfolded"
+
+            self.label.setText(unfoldedString)
+
+        for child in self.children:
+            child.importAllUnfoldedMeshesInHierarchy()
 
     def toString(self):
         '''
@@ -440,7 +744,9 @@ class HierarchicalMesh(object):
 
 
     def addCutPlanes(self, viewpoints, bds):
-
+        '''
+        Adds the cuttingplanes to the respective level in the hierarchy.
+        '''
         if self.parent:
             plane = vtk.vtkPlane()
             x0, y0, z0 = (bds[self.getLevel()-1][1] - abs(bds[self.getLevel()-1][0])) / 2., (bds[self.getLevel()-1][3] - abs(bds[self.getLevel()-1][2])) / 2., (bds[self.getLevel()-1][5] - abs(bds[self.getLevel()-1][4])) / 2.
@@ -451,4 +757,31 @@ class HierarchicalMesh(object):
         for child in self.children:
             child.addCutPlanes(viewpoints, bds)
 
+    def setUpAdditionalUiElements(self):
+        '''
+        Adds Buttons to the GUI to switch the visibility of the papermeshes.
+        '''
+        self.ui_elements_box = QtWidgets.QGroupBox()
+        self.ui_elements_layout = QtWidgets.QHBoxLayout()
+        self.ui_elements_box.setLayout(self.ui_elements_layout)
+        self.updateUiButtons(self.mesh)
 
+    def clearUiButtons(self):
+        while self.ui_elements_layout.count():
+            child = self.ui_elements_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+    def updateUiButtons(self,actor):
+        visibilityButton = QtWidgets.QPushButton("Render")
+        visibilityButton.setCheckable(True)
+        visibilityButton.setChecked(True)
+
+        def onVisibilityChange():
+            if (visibilityButton.isChecked()):
+                actor.SetVisibility(True)
+            else:
+                actor.SetVisibility(False)
+
+        visibilityButton.clicked.connect(onVisibilityChange)
+        self.ui_elements_layout.addWidget(visibilityButton)
