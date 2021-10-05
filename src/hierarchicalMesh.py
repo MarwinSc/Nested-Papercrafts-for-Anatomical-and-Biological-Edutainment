@@ -54,7 +54,7 @@ class HierarchicalMesh(object):
 
         #list holding the unfolded pieces of the papermesh once cut and unfold
         self.unfoldedActors = []
-        self.labels = []
+        self.gluetabs = []
 
     def setName(self,filename):
         '''
@@ -161,115 +161,12 @@ class HierarchicalMesh(object):
         """
         if self.mesh is not None and self.children:
 
-            #----cut planes
-            #centerPoint = self.children[0].papermesh.GetCenter()
-            cutNormal = self.cutPlane.GetNormal()
-            invertedNormal = (-1.0 * float(cutNormal[0]), -1.0 * float(cutNormal[1]), -1.0 * float(cutNormal[2]))
-            invPlane = vtk.vtkPlane()
-            invPlane.SetOrigin(self.cutPlane.GetOrigin())
-            invPlane.SetNormal(invertedNormal[0],invertedNormal[1],invertedNormal[2])
-            planes = [self.cutPlane, invPlane]
-            print(self.cutPlane.GetOrigin())
-            #----------
-            '''
-            centerPoint = self.children[0].papermesh.GetCenter()
-            planes = []
+            try:
+                self.boolThenCut()
+                #self.cutThenBool()
+            except Exception:
+                raise Exception("Failure on Cut")
 
-            # for the "upper" part of the mesh
-            plane = vtk.vtkPlane()
-            plane.SetOrigin(centerPoint)
-            plane.SetNormal(0.0, 0.0, 1.0)
-            planes.append(plane)
-
-            # for the "lower" part of the mesh
-            plane = vtk.vtkPlane()
-            plane.SetOrigin(centerPoint)
-            plane.SetNormal(0.0, 0.0, -1.0)
-            planes.append(plane)
-            '''
-
-            meshPieces = self.meshProcessor.cutMeshWithPlanes(self.papermesh, planes, None)
-            self.meshPieces = []
-
-            for i in range(len(meshPieces)):
-
-                fillHole = vtk.vtkFillHolesFilter()
-                fillHole.SetInputData(meshPieces[i])
-                fillHole.SetHoleSize(1000.0)
-                fillHole.Update()
-                normals = vtk.vtkPolyDataNormals()
-                normals.SetInputData(fillHole.GetOutput())
-                normals.ComputeCellNormalsOn()
-                normals.Update()
-                mesh = normals.GetOutput()
-                mesh = util.cleanMesh(mesh)
-
-                util.writeStl(mesh, "piece{}_".format(i) + self.name[:self.name.rfind('.')])
-                path = os.path.join(self.dirname, "../out/3D/piece{}_".format(i) + self.name)
-
-                # --------boolean difference
-                final_mesh = trimesh.load(path)
-                for child in self.children:
-                    tri_child = trimesh.load(child.file)
-                    # final_mesh = final_mesh.difference(tri_child, engine='blender')
-                    final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
-
-                filename = os.path.join(self.dirname, "../out/3D/differenced_{}_".format(i) + self.name)
-                final_mesh.export(filename)
-
-                normal = planes[i].GetNormal()
-                origin = planes[i].GetOrigin()
-                outPath = os.path.join(self.dirname, "../out/3D/differenced_{}_".format(i) + self.name[:self.name.rfind('.')]+".off")
-                util.meshioIO(filename, outPath)
-                boolean_interface.Boolean_Interface().merge_adjacent_vertices_by_distance(outPath, 10.0, -1.0 * float(normal[0]),-1.0 * float(normal[1]),-1.0 * float(normal[2]), float(origin[0]), float(origin[1]), float(origin[2]))
-                inPath = os.path.join(self.dirname, "../out/3D/merged.off")
-                outPath = os.path.join(self.dirname, "../out/3D/merged.stl")
-                util.meshioIO(inPath, outPath)
-
-
-                final_mesh_vtk = util.cleanMesh(util.readStl(outPath))
-                #util.writeStl(final_mesh_vtk, "debug_differenced_{}_".format(i) + self.name[:self.name.rfind('.')])
-
-                mapper = vtk.vtkPolyDataMapper()
-                mapper.SetInputData(final_mesh_vtk)
-                actor = vtk.vtkActor()
-                actor.SetMapper(mapper)
-                actor.GetProperty().SetOpacity(0.15)
-                self.meshPieces.append(actor)
-
-            '''
-            meshPieces = self.meshProcessor.cutMeshWithPlanes(final_mesh_vtk, planes, None)
-            paths = []
-            paths2 = []
-            for i in range(len(meshPieces)):
-                # write stl and convert to off
-                print("name " + self.name)
-                util.writeStl(meshPieces[i], "piece{}_".format(i) + self.name[:self.name.rfind('.')])
-                inPath = os.path.join(self.dirname, "../out/3D/piece{}_".format(i) + self.name)
-                outPath = os.path.join(self.dirname, "../out/3D/piece{}_".format(i) + self.name[:self.name.rfind('.')]+".off")
-                util.meshioIO(inPath, outPath)
-                paths.append(outPath)
-                paths2.append(inPath)
-
-            self.meshPieces = []
-
-            for i,path in enumerate(paths):
-                normal = planes[i].GetNormal()
-                origin = planes[i].GetOrigin()
-                boolean_interface.Boolean_Interface().triangulateCut(paths[i],-1.0 * float(normal[0]),-1.0 * float(normal[1]),-1.0 * float(normal[2]), float(origin[0]), float(origin[1]), float(origin[2]))
-                inPath = os.path.join(self.dirname, "../out/3D/connected.off")
-                outPath = paths2[i]
-                util.meshioIO(inPath, outPath)
-
-                mesh = util.readStl(outPath)
-
-                mapper = vtk.vtkPolyDataMapper()
-                mapper.SetInputData(mesh)
-                actor = vtk.vtkActor()
-                actor.SetMapper(mapper)
-                actor.GetProperty().SetOpacity(0.15)
-                self.meshPieces.append(actor)
-            '''
             self.clearUiButtons()
             for piece in self.meshPieces:
                 self.updateUiButtons(piece)
@@ -277,6 +174,143 @@ class HierarchicalMesh(object):
         # if all children are cut out save it and call boolean for children
         for child in self.children:
             child.recursive_difference()
+
+    def boolThenCut(self):
+        '''
+        First calculates the difference with the inner mesh, then cuts the given papermesh open and uses boolean.cpp methods to mesh the resulting two boundary loops.
+        '''
+
+        final_mesh = trimesh.load(self.file)
+        for child in self.children:
+            tri_child = trimesh.load(child.file)
+            # final_mesh = final_mesh.difference(tri_child, engine='blender')
+            #final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
+            final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
+
+        filename = os.path.join(self.dirname, "../out/3D/differenced_" + self.name)
+        final_mesh.export(filename)
+
+        final_mesh_vtk = util.readStl(filename)
+
+        # ----cut planes
+        # centerPoint = self.children[0].papermesh.GetCenter()
+        cutNormal = self.cutPlane.GetNormal()
+        invertedNormal = (-1.0 * float(cutNormal[0]), -1.0 * float(cutNormal[1]), -1.0 * float(cutNormal[2]))
+        invPlane = vtk.vtkPlane()
+        invPlane.SetOrigin(self.cutPlane.GetOrigin())
+        invPlane.SetNormal(invertedNormal[0], invertedNormal[1], invertedNormal[2])
+        planes = [self.cutPlane, invPlane]
+        print(self.cutPlane.GetOrigin())
+        # ----------
+
+        meshPieces = self.meshProcessor.cutMeshWithPlanes(final_mesh_vtk, planes, None)
+        paths = []
+        paths2 = []
+        for i in range(len(meshPieces)):
+            # write stl and convert to off
+            print("name " + self.name)
+            util.writeStl(meshPieces[i], "piece{}_".format(i) + self.name[:self.name.rfind('.')])
+            inPath = os.path.join(self.dirname, "../out/3D/piece{}_".format(i) + self.name)
+            outPath = os.path.join(self.dirname,
+                                   "../out/3D/piece{}_".format(i) + self.name[:self.name.rfind('.')] + ".off")
+            util.meshioIO(inPath, outPath)
+            paths.append(outPath)
+            paths2.append(inPath)
+
+        self.meshPieces = []
+
+        for i, path in enumerate(paths):
+            normal = planes[i].GetNormal()
+            origin = planes[i].GetOrigin()
+            boolean_interface.Boolean_Interface().triangulateCut(paths[i], 5.0, -1.0 * float(normal[0]),
+                                                                 -1.0 * float(normal[1]), -1.0 * float(normal[2]),
+                                                                 float(origin[0]), float(origin[1]), float(origin[2]))
+            inPath = os.path.join(self.dirname, "../out/3D/connected.off")
+            outPath = paths2[i]
+            util.meshioIO(inPath, outPath)
+
+            mesh = util.readStl(outPath)
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputData(mesh)
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetOpacity(0.15)
+            self.meshPieces.append(actor)
+
+    def cutThenBool(self):
+        '''
+        First cuts the papermesh open, then uses vtk methods to mesh the resulting single boundary loop, then calculates the difference between each of the pieces and the inner mesh.
+        '''
+
+        # ----cut planes
+        # centerPoint = self.children[0].papermesh.GetCenter()
+        cutNormal = self.cutPlane.GetNormal()
+        invertedNormal = (-1.0 * float(cutNormal[0]), -1.0 * float(cutNormal[1]), -1.0 * float(cutNormal[2]))
+        invPlane = vtk.vtkPlane()
+        invPlane.SetOrigin(self.cutPlane.GetOrigin())
+        invPlane.SetNormal(invertedNormal[0], invertedNormal[1], invertedNormal[2])
+        planes = [self.cutPlane, invPlane]
+        print(self.cutPlane.GetOrigin())
+        # ----------
+
+        meshPieces = self.meshProcessor.cutMeshWithPlanes(self.papermesh, planes, None)
+        self.meshPieces = []
+
+        for i in range(len(meshPieces)):
+
+            fillHole = vtk.vtkFillHolesFilter()
+            fillHole.SetInputData(meshPieces[i])
+            fillHole.SetHoleSize(1000.0)
+            fillHole.Update()
+            normals = vtk.vtkPolyDataNormals()
+            normals.SetInputData(fillHole.GetOutput())
+            normals.ComputeCellNormalsOn()
+            normals.Update()
+            mesh = normals.GetOutput()
+            mesh = util.cleanMesh(mesh)
+
+            util.writeStl(mesh, "piece{}_".format(i) + self.name[:self.name.rfind('.')])
+            path = os.path.join(self.dirname, "../out/3D/piece{}_".format(i) + self.name)
+
+            # --------boolean difference
+            final_mesh = trimesh.load(path)
+            for child in self.children:
+                tri_child = trimesh.load(child.file)
+                # final_mesh = final_mesh.difference(tri_child, engine='blender')
+                final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
+
+            filename = os.path.join(self.dirname, "../out/3D/differenced_{}_".format(i) + self.name)
+            final_mesh.export(filename)
+
+            normal = planes[i].GetNormal()
+            origin = planes[i].GetOrigin()
+            outPath = os.path.join(self.dirname,
+                                   "../out/3D/differenced_{}_".format(i) + self.name[:self.name.rfind('.')] + ".off")
+            util.meshioIO(filename, outPath)
+            boolean_interface.Boolean_Interface().merge_adjacent_vertices_by_distance(outPath, 1.0,
+                                                                                      -1.0 * float(normal[0]),
+                                                                                      -1.0 * float(normal[1]),
+                                                                                      -1.0 * float(normal[2]),
+                                                                                      float(origin[0]),
+                                                                                      float(origin[1]),
+                                                                                      float(origin[2]))
+            inPath = os.path.join(self.dirname, "../out/3D/merged.off")
+            outPath = os.path.join(self.dirname, "../out/3D/merged.stl")
+            util.meshioIO(inPath, outPath)
+
+            final_mesh_vtk = util.cleanMesh(util.readStl(outPath))
+            # util.writeStl(final_mesh_vtk, "debug_differenced_{}_".format(i) + self.name[:self.name.rfind('.')])
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputData(final_mesh_vtk)
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetOpacity(0.15)
+            self.meshPieces.append(actor)
+
+
+
 
     def renderStructures(self,renderer):
         '''
@@ -370,7 +404,7 @@ class HierarchicalMesh(object):
             filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
             outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
             util.meshioIO(filename, outpath)
-            self.label = util.readStl(outpath)
+            self.gluetab = util.readStl(outpath)
 
     def unfoldPaperMeshPieces(self, iterations):
         '''
@@ -395,7 +429,7 @@ class HierarchicalMesh(object):
                 filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
                 outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
                 util.meshioIO(filename, outpath)
-                self.labels.append(util.readStl(outpath))
+                self.gluetabs.append(util.readStl(outpath))
 
             else:
                 unfoldedString += "Not Unfolded, "
@@ -412,13 +446,13 @@ class HierarchicalMesh(object):
             previousImage = None
             #creating unfoldings per mesh piece
             if hasattr(self,"meshPieces"):
-                for unfolded_piece in self.unfoldedActors:
+                for j, unfolded_piece in enumerate(self.unfoldedActors):
 
                     for i, mesh in enumerate(self.meshes):
 
                         dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh,unfolded_piece)
                         projection = projector.projectPerTriangle(dedicatedMesh,mesh.getActor(),idx,resolution)
-                        img = projector.createUnfoldedPaperMesh(projection, unfolded_piece,self.labels[i], idx)
+                        img = projector.createUnfoldedPaperMesh(projection, unfolded_piece, self.gluetabs[j], idx)
                         #labels_img = util.VtkToNp(self.renderLabels())
                         img = projector.mask(img)
                         #texture = texture + label
@@ -439,7 +473,7 @@ class HierarchicalMesh(object):
                     texture = vtk.vtkTexture()
                     texture.SetInputConnection(imageReader.GetOutputPort())
 
-                    unfolded_piece.GetMapper.SetInputData(self.meshProcessor.normalizeUV(unfolded_piece.GetMapper.GetInput()))
+                    unfolded_piece.GetMapper().SetInputData(self.meshProcessor.normalizeUV(unfolded_piece.GetMapper().GetInput()))
 
                     unfolded_piece.SetTexture(texture)
                     unfolded_piece.Modified()
@@ -454,7 +488,7 @@ class HierarchicalMesh(object):
                 for i, mesh in enumerate(self.meshes):
                     dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, self.unfoldedActor)
                     projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
-                    img = projector.createUnfoldedPaperMesh(projection, self.unfoldedActor, self.label, idx)
+                    img = projector.createUnfoldedPaperMesh(projection, self.unfoldedActor, self.gluetab, idx)
                     #labels_img = util.VtkToNp(self.renderLabels())
                     img = projector.mask(img)
                     #texture = texture + label
@@ -517,7 +551,7 @@ class HierarchicalMesh(object):
         trans.RotateZ(180.)
         transform = vtk.vtkTransformPolyDataFilter()
         transform.SetTransform(trans)
-        transform.SetInputData(self.label)
+        transform.SetInputData(self.gluetab)
         transform.Update()
 
         edges = vtk.vtkFeatureEdges()
@@ -555,7 +589,7 @@ class HierarchicalMesh(object):
         filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
         outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
         util.meshioIO(filename, outpath)
-        self.label = util.readStl(outpath)
+        self.gluetab = util.readStl(outpath)
 
         filename = os.path.join(self.dirname, "../out/2D/texture2.png")
         reader = vtk.vtkPNGReader()
@@ -611,8 +645,11 @@ class HierarchicalMesh(object):
             if hasattr(self,"meshPieces"):
                 for i,unfolded_piece in enumerate(self.unfoldedActors):
                     util.writeObj(unfolded_piece.GetMapper().GetInput(),"unfolded_{}_piece_{}".format(self.getChildIdx(),i))
+                    util.writeObj(self.gluetabs[i], "gluetabs_{}_piece_{}".format(self.getChildIdx(), i))
             else:
                 util.writeObj(self.unfoldedActor.GetMapper().GetInput(),"unfolded_{}".format(self.getChildIdx()))
+                util.writeObj(self.gluetab, "gluetabs_{}".format(self.getChildIdx()))
+
         for child in self.children:
             child.writeAllUnfoldedMeshesInHierarchy()
 
@@ -636,6 +673,9 @@ class HierarchicalMesh(object):
                             actor.GetProperty().SetOpacity(0.5)
                             self.unfoldedActors.append(actor)
                             unfoldedString += "Unfolded, "
+                        elif filename == "gluetabs_{}_piece_{}.obj".format(self.getChildIdx(),i):
+                            mesh = util.readObj(os.path.join(directory, filename))
+                            self.gluetabs.append(mesh)
 
                 else:
                     if filename == "unfolded_{}.obj".format(self.getChildIdx()):
@@ -647,6 +687,10 @@ class HierarchicalMesh(object):
                         actor.GetProperty().SetOpacity(0.5)
                         self.unfoldedActor = actor
                         unfoldedString = "Unfolded"
+                    elif filename == "gluetabs_{}.obj".format(self.getChildIdx()):
+                        mesh = util.readObj(os.path.join(directory, filename))
+                        self.gluetab = mesh
+
 
             self.label.setText(unfoldedString)
 

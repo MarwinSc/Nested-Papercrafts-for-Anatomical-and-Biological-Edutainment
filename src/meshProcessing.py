@@ -43,9 +43,14 @@ class MeshProcessing():
 
             filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
             gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
-            gluetabs_mirrored_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj")
 
             graph.save(filename, gluetabs_filename)
+
+            filename = os.path.join(self.dirname, "../out/3D/unfolded/model2D.obj")
+            gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
+            gluetabs_mirrored_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj")
+
+            graph.save_all(filename, gluetabs_filename,gluetabs_mirrored_filename)
 
             filename = os.path.join(self.dirname, "../out/3D/unfolded/model.obj")
             mesh = util.readObj(filename)
@@ -63,8 +68,7 @@ class MeshProcessing():
             actor.GetProperty().BackfaceCullingOn()
             actor.GetProperty().SetOpacity(0.5)
 
-            #just to write the model with normalized uvs
-            util.writeObj(actor.GetMapper().GetInput(), "unfolded/model")
+
             return actor
 
 
@@ -116,6 +120,7 @@ class MeshProcessing():
         actor.GetProperty().SetOpacity(0.5)
 
         return actor
+
 
     def normalizeUV(self,mesh):
         '''

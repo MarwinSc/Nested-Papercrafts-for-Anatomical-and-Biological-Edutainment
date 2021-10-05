@@ -17,6 +17,8 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
     '''
     paper = dedicatedPaperMesh.GetMapper().GetInput()
 
+    # --- centers and normals of the polydata cells
+
     centersFilter = vtk.vtkCellCenters()
     centersFilter.SetInputData(paper)
     centersFilter.VertexCellsOn()
@@ -34,17 +36,13 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
     array = normals.GetOutput()
     normalDataDouble = array.GetCellData().GetArray("Normals")
 
-    # -----------------
+    # Cameras and Buffers -----------------
 
     camera = vtk.vtkCamera()
     #        camera.SetViewUp(0, 1, 0)
     camera.ParallelProjectionOn()
     camera.Zoom(0.01)
     camera.SetClippingRange(0.0001, 300.01)
-    #TODO reimplement with hierachical Mesh
-    #if inflateStruc:
-    #    if not inflateStruc[meshNr]:
-    #        camera.SetClippingRange(0.0001, 60.01)
 
     depthPeeling = True
     occlusion = 0.1
@@ -88,7 +86,7 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
     else:
         buffer.SetUseDepthPeeling(False)
 
-    #-----------------
+    # Make papermesh transparent -----------------
     transparent = [0.0, 0.0, 0.0, 0.0]
     cellData = vtk.vtkUnsignedCharArray()
     cellData.SetNumberOfComponents(4)
@@ -109,6 +107,7 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
 
     img = np.array([[],[],[]])
 
+    #for every cell render a triangle
     for i in range(centersFilter.GetOutput().GetNumberOfPoints()):
         p = [0.0, 0.0, 0.0]
         centersFilter.GetOutput().GetPoint(i, p)
@@ -337,9 +336,6 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     '''
     mesh = originalPaperMesh.GetMapper().GetInput()
 
-    # TODO Set automatically based on the relative size of the uv grid
-    width = 400
-
     textureCoordinates = mesh.GetPointData().GetTCoords()
 
     points = vtk.vtkPoints()
@@ -358,8 +354,6 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
         cells.InsertNextCell(3)
 
         for j in range(len(uvs)):
-            #x = (uvs[j][0] * width) - (width / 2.0)
-            #y = (uvs[j][1] * width) - (width / 2.0)
             x = uvs[j][0]
             y = uvs[j][1]
 
@@ -420,39 +414,7 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     pointActor.GetProperty().SetColor([255.0,0.0,0.0])
 
     # Labels----------------
-    '''
-    centerFilter = vtk.vtkCenterOfMass()
-    centerFilter.SetInputData(actor.GetMapper().GetInput())
-    centerFilter.Update()
-    centerUnfolding = centerFilter.GetCenter()
-    
-    bounds = labelMesh.GetBounds()
-    x_bounds = bounds[1] - bounds[0]
-    y_bounds = bounds[3] - bounds[2]
-    factor = 1.0
-    if x_bounds > y_bounds:
-        factor = 1/x_bounds
-    else:
-        factor = 1/y_bounds
 
-    trans = vtk.vtkTransform()
-    trans.Scale(factor,factor,factor)
-    trans.RotateX(-90.)
-    trans.Scale(width,-width,width)
-    transform = vtk.vtkTransformPolyDataFilter()
-    transform.SetTransform(trans)
-    transform.SetInputData(labelMesh)
-    transform.Update()
-
-    centerFilter.SetInputData(transform.GetOutput())
-    centerFilter.Update()
-    centerLabels = centerFilter.GetCenter()
-    x_diff = centerUnfolding[0] - centerLabels[0]
-    y_diff = centerUnfolding[2] - centerLabels[2]
-
-    trans.Translate(x_diff,0.0,y_diff)
-    transform.Update()
-    '''
     trans = vtk.vtkTransform()
     trans.RotateX(-90.)
     trans.Scale(1.0,-1.0,1.0)
@@ -514,32 +476,6 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
 
     return img
 
-    '''
-    imgWidth = wti.GetOutput().GetExtent()[1] + 1
-    imgHeight = wti.GetOutput().GetExtent()[3] + 1
-
-    img = vtkToNpHelper(wti.GetOutput(), imgWidth, imgHeight)
-
-    dy, dx, dz = img.shape
-    filename = os.path.join(dirname, "../out/2D/unfolding{}.png".format(idx))
-    util.writeImage(util.NpToVtk(img,dx,dy,dz),filename)
-
-def vtkToNpHelper( img, width, height):
-    img = numpy_support.vtk_to_numpy(img.GetPointData().GetScalars())[:, 0:3]
-    img.astype(float)
-
-    img = np.reshape(np.ravel(img), (width, height, 3))
-
-    mask = np.where(img != 255)
-    width = mask[0].max() - mask[0].min()
-    height = mask[1].max() - mask[1].min()
-    if width > height:
-        img = img[mask[0].min():mask[0].max(), mask[1].min(): mask[1].min() + width, :]
-    else:
-        img = img[mask[0].min():mask[0].min() + height, mask[1].min(): mask[1].max(), :]
-
-    return img
-    '''
 
 def mask(img):
     mask = np.where(img != 255)

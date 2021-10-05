@@ -28,15 +28,11 @@ namespace ae {
 	public:
 		boolean_interface();
 		~boolean_interface();
-		void boolean(std::string first, std::string second);
-		void boolUnion(std::string first, std::string second);
 		void merge(std::string first, float threshold, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z);
 		Mesh merge_vertices_by_distance(Mesh first_mesh, double threshold, K::Plane_3 cut_plane);
-		void triangulateCut(std::string first, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z);
+		void triangulateCut(std::string first, float threshold, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z);
 
 	private:
-		Polyhedron boolean_interface::load(std::string file);
-		void boolean_interface::remesh(Polyhedron mesh);
 
 		Mesh connectBoundaries(Mesh mesh, K::Vector_3 compareNormal);
 		std::vector<float> getEdgeLengths(halfedge_descriptor hd, Mesh mesh);
@@ -47,11 +43,7 @@ namespace ae {
 
 extern "C" 	__declspec(dllexport) ae::boolean_interface * __stdcall _boolean_interface();
 
-extern "C" 	__declspec(dllexport) void __stdcall _boolean(ae::boolean_interface * g, char* first, char* second);
-
-extern "C" 	__declspec(dllexport) void __stdcall _boolUnion(ae::boolean_interface * g, char* first, char* second);
-
-extern "C" 	__declspec(dllexport) void __stdcall _triangulateCut(ae::boolean_interface * g, char* first, float x, float y, float z, float o_x, float o_y, float o_z);
+extern "C" 	__declspec(dllexport) void __stdcall _triangulateCut(ae::boolean_interface * g, char* first, float t, float x, float y, float z, float o_x, float o_y, float o_z);
 
 extern "C" 	__declspec(dllexport) void __stdcall _merge(ae::boolean_interface * g, char* first, float t, float x, float y, float z, float o_x, float o_y, float o_z);
 

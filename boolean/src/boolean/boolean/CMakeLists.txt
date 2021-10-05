@@ -9,16 +9,14 @@ find_package(CGAL)
 
 add_library(${PROJECT_NAME} STATIC
 "boolean.h"
-"boolean.cpp"
-)
+"boolean.cpp")
 
 target_link_libraries(${PROJECT_NAME} CGAL::CGAL)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(boolean_interface SHARED
 "boolean.h"
-"boolean.cpp"
-)
+"boolean.cpp")
 
 target_link_libraries(boolean_interface CGAL::CGAL)
 target_include_directories(boolean_interface PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

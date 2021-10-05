@@ -40,189 +40,11 @@ namespace ae{
 	};
 
 	boolean_interface::boolean_interface(){}
+
+	boolean_interface::~boolean_interface()
+	{
+	}
 	
-	void boolean_interface::boolean(std::string first, std::string second)
-	{
-		//Polyhedron first_mesh = boolean_interface::load(first);
-
-		//Polyhedron second_mesh = boolean_interface::load(second);
-
-		//Polyhedron booleanResult;
-
-		const char* filename1 = first.c_str();
-		const char* filename2 = second.c_str();
-		std::ifstream input(filename1);
-		Mesh first_mesh, second_mesh;
-		if (!input || !(input >> first_mesh))
-		{
-			std::cerr << "First mesh is not a valid off file." << std::endl;
-		}
-		input.close();
-		input.open(filename2);
-		if (!input || !(input >> second_mesh))
-		{
-			std::cerr << "Second mesh is not a valid off file." << std::endl;
-		}
-
-		Mesh::Property_map<edge_descriptor, bool> is_constrained_map = first_mesh.add_property_map<edge_descriptor, bool>("e:is_constrained", false).first;
-
-		bool valid_difference = PMP::corefine_and_compute_difference(first_mesh, second_mesh, first_mesh, 
-			params::all_default(), // default parameters for mesh1
-			params::all_default(), // default parameters for mesh2
-			params::edge_is_constrained_map(is_constrained_map));
-
-
-		if (valid_difference)
-		{
-			std::cout << "Difference was successfully computed\n";
-			std::ofstream output("difference.off");
-			output.precision(17);
-			output << first_mesh;
-
-			//boolean_interface::remesh(first_mesh);
-
-		}
-		else {
-			std::cout << "Difference could not be computed\n";
-		}
-
-		/*
-
-		double stop_ratio = 0.80;
-		SMS::Count_ratio_stop_predicate<Mesh> stop(stop_ratio);
-
-		int r = SMS::edge_collapse(
-			first_mesh,
-			stop,
-			params::edge_is_constrained_map(is_constrained_map));
-
-		
-		// collect faces incident to a constrained edge
-		std::vector<face_descriptor> selected_faces;
-		std::vector<bool> is_selected(num_faces(first_mesh), false);
-		for (edge_descriptor e : edges(first_mesh))
-			if (is_constrained_map[e])
-			{
-				// insert all faces incident to the target vertex
-				for (halfedge_descriptor h :
-				halfedges_around_target(halfedge(e, first_mesh), first_mesh))
-				{
-					if (!is_border(h, first_mesh))
-					{
-						face_descriptor f = face(h, first_mesh);
-						if (!is_selected[f])
-						{
-							selected_faces.push_back(f);
-							is_selected[f] = true;
-						}
-					}
-				}
-			}
-		// increase the face selection
-		//CGAL::expand_face_selection(selected_faces, first_mesh, 2, Vector_pmap_wrapper(is_selected), std::back_inserter(selected_faces));
-		std::cout << selected_faces.size() << " faces were selected for the remeshing step\n";
-		// remesh the region around the intersection polylines
-		PMP::isotropic_remeshing(
-			selected_faces,
-			0.0,
-			first_mesh,
-			params::edge_is_constrained_map(is_constrained_map));
-
-		
-
-		std::ofstream output("difference_remeshed.off");
-		output.precision(17);
-		output << first_mesh;
-
-		*/
-	}
-
-	void boolean_interface::boolUnion(std::string first, std::string second)
-	{
-		const char* filename1 = first.c_str();
-		const char* filename2 = second.c_str();
-		std::ifstream input(filename1);
-		Mesh first_mesh, second_mesh;
-		if (!input || !(input >> first_mesh))
-		{
-			std::cerr << "First mesh is not a valid off file." << std::endl;
-		}
-		input.close();
-		input.open(filename2);
-		if (!input || !(input >> second_mesh))
-		{
-			std::cerr << "Second mesh is not a valid off file." << std::endl;
-		}
-
-		Mesh::Property_map<edge_descriptor, bool> is_constrained_map = first_mesh.add_property_map<edge_descriptor, bool>("e:is_constrained", false).first;
-
-		bool valid_difference = PMP::corefine_and_compute_union(first_mesh, second_mesh, first_mesh,
-			params::all_default(), // default parameters for mesh1
-			params::all_default(), // default parameters for mesh2
-			params::edge_is_constrained_map(is_constrained_map));
-
-
-		if (valid_difference)
-		{
-			std::cout << "Union was successfully computed\n";
-			std::ofstream output("../out/3D/union.off");
-			output.precision(17);
-			output << first_mesh;
-
-			//boolean_interface::remesh(first_mesh);
-
-		}
-		else {
-			std::cout << "Union could not be computed\n";
-		}
-	}
-
-	Polyhedron boolean_interface::load(std::string file)
-	{
-		Polyhedron mesh;
-
-		// open file buffer
-		std::filebuf filebuffer;
-		if (filebuffer.open(file, std::ios::in))
-		{
-			// read .off file into CGAL::Polyhedron_3
-			std::istream is(&filebuffer);
-
-			if (!is)
-			{
-				throw std::exception(("Bad input stream for file \"" + file + "\".").c_str());
-			}
-
-			// scan instead of read so we get some error messages from CGAL
-			CGAL::scan_OFF(is, mesh, true);
-
-			filebuffer.close();
-
-			// at least one face is necessary, even if its useless
-			assert(mesh.size_of_vertices() >= 3);
-			assert(mesh.size_of_halfedges() >= 3);
-			assert(mesh.size_of_facets() >= 1);
-		}
-		else
-		{
-			throw std::exception(("Failed to load \"" + file + "\".").c_str());
-		}
-
-		assert(CGAL::is_valid_polygon_mesh(mesh, true));
-		assert(CGAL::is_triangle_mesh(mesh));
-		assert(!CGAL::Polygon_mesh_processing::does_self_intersect(mesh));
-
-		return mesh;
-	}
-
-	void boolean_interface::remesh(Polyhedron mesh) {
-
-		double target_edge_length = 10.0;
-		CGAL::Polygon_mesh_processing::isotropic_remeshing(faces(mesh),target_edge_length,mesh);
-		std::ofstream output("remeshed_difference.off");
-		output.precision(17);
-		output << mesh;
-	}
 
 	void boolean_interface::merge(std::string first, float threshold, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z) {
 	
@@ -248,7 +70,7 @@ namespace ae{
 		output.clear();
 	}
 
-	void boolean_interface::triangulateCut(std::string first, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z) {
+	void boolean_interface::triangulateCut(std::string first, float threshold, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z) {
 		std::cout << first << std::endl;
 		const char* filename1 = first.c_str();
 		std::ifstream input(filename1);
@@ -260,8 +82,8 @@ namespace ae{
 		input.close();
 
 		K::Plane_3 cut_plane = K::Plane_3(K::Point_3(o_x, o_y, o_z), K::Vector_3(n_x, n_y, n_z));
-		mesh = boolean_interface::merge_vertices_by_distance(mesh, 5.0, cut_plane);
-		mesh = boolean_interface::merge_vertices_by_distance(mesh, 15.0, cut_plane);
+		mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
+		mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
 
 		mesh = boolean_interface::removeDegenFaces(mesh,0.2f,cut_plane);
 		mesh = boolean_interface::connectBoundaries(mesh, K::Vector_3(n_x, n_y, n_z));
@@ -654,19 +476,9 @@ ae::boolean_interface* __stdcall _boolean_interface()
 	return new ae::boolean_interface();
 }
 
-void __stdcall _boolean(ae::boolean_interface* g, char* first, char* second)
+void __stdcall _triangulateCut(ae::boolean_interface* g, char* first, float t, float x, float y, float z, float o_x, float o_y, float o_z)
 {
-	g->boolean(std::string(first), std::string(second));
-}
-
-void __stdcall _boolUnion(ae::boolean_interface* g, char* first, char* second)
-{
-	g->boolUnion(std::string(first), std::string(second));
-}
-
-void __stdcall _triangulateCut(ae::boolean_interface* g, char* first, float x, float y, float z, float o_x, float o_y, float o_z)
-{
-	g->triangulateCut(std::string(first), x, y, z, o_x, o_y, o_z);
+	g->triangulateCut(std::string(first), t, x, y, z, o_x, o_y, o_z);
 }
 
 void __stdcall _merge(ae::boolean_interface * g, char* first, float t, float x, float y, float z, float o_x, float o_y, float o_z)
