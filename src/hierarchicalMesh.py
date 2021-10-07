@@ -534,6 +534,8 @@ class HierarchicalMesh(object):
         imageDim = image.GetDimensions()
         width = imageDim[0]
         height = imageDim[1]
+        filename = (r"C:\Users\marwi\OneDrive\Desktop\TU\ws21\AE\out\2D\texture_debug_before_optimized.png")
+        util.writeImage(image, filename)
         result = self.imageProcessor.optimizedBrighten(image, width, height)
         if prev_image:
             result = self.imageProcessor.normalizeMultiplication(prev_image, result, width,height).GetOutput()
@@ -544,70 +546,6 @@ class HierarchicalMesh(object):
         writer.SetInputData(result)
         writer.Write()
         return result
-
-    def renderLabels(self):
-        trans = vtk.vtkTransform()
-        trans.RotateX(-90.)
-        trans.RotateZ(180.)
-        transform = vtk.vtkTransformPolyDataFilter()
-        transform.SetTransform(trans)
-        transform.SetInputData(self.gluetab)
-        transform.Update()
-
-        edges = vtk.vtkFeatureEdges()
-        edges.SetInputData(transform.GetOutput())
-        edges.BoundaryEdgesOn()
-        edges.Update()
-
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputData(edges.GetOutput())
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(100.0, 100.0, 100.0)
-        actor.GetProperty().SetLineWidth(5.0)
-
-        camera = vtk.vtkCamera()
-        camera.SetPosition(0, -1200, 0)
-        camera.SetFocalPoint(0, 0, 0)
-        camera.SetViewUp(0, 0, 1)
-        camera.ParallelProjectionOn()
-        camera.SetParallelScale(500.0)
-        camera.SetClippingRange(0.1,1500)
-        ren, iren, renWin, wti = util.getbufferRenIntWin(camera, width=5000, height=5000)
-        renWin.SetOffScreenRendering(1)
-
-        ren.AddActor(actor)
-        renWin.Render()
-        wti.Update()
-
-        filename = os.path.join(self.dirname, "../out/2D/label.png")
-        util.writeImage(wti.GetOutput(),filename)
-
-        return wti.GetOutput()
-
-    def createLabels(self):
-        filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
-        outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
-        util.meshioIO(filename, outpath)
-        self.gluetab = util.readStl(outpath)
-
-        filename = os.path.join(self.dirname, "../out/2D/texture2.png")
-        reader = vtk.vtkPNGReader()
-        reader.SetFileName(filename)
-        castFilter = vtk.vtkImageCast()
-        castFilter.SetInputConnection(reader.GetOutputPort())
-        castFilter.SetOutputScalarTypeToUnsignedChar()
-        castFilter.Update()
-        texture = util.VtkToNp(castFilter.GetOutput())
-
-        img = self.renderLabels()
-
-        labels = util.VtkToNp(img)
-        img = texture + labels
-
-        dy, dx, dz = img.shape
-        filename = os.path.join(self.dirname, "../out/2D/labels.png")
-        util.writeImage(util.NpToVtk(img, dx, dy, dz), filename)
 
     def getAllMeshes(self, asActor = True):
         '''

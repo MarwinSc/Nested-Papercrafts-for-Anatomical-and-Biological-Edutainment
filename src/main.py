@@ -305,11 +305,6 @@ class Ui_MainWindow(object):
             org.importUnfolded()
         importUnfoldedButton.clicked.connect(onImportUnfolded)
 
-        testUnfoldButton = QtWidgets.QPushButton("Test Labels")
-        def onTestUnfold():
-            org.project_test()
-        testUnfoldButton.clicked.connect(onTestUnfold)
-
         """
         Adding UI elements to their respective container.
         """
@@ -410,7 +405,6 @@ class Ui_MainWindow(object):
         debugBox_Layout.addWidget(treeToStringButton)
         debugBox_Layout.addWidget(writeUnfoldedButton)
         debugBox_Layout.addWidget(importUnfoldedButton)
-        debugBox_Layout.addWidget(testUnfoldButton)
         #debugBox_Layout.addWidget(importAnchorPapermeshButton)
 
         layoutLeft.addWidget(debugBox)

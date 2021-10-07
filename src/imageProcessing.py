@@ -1,7 +1,6 @@
 import vtkmodules.all as vtk
 from vtkmodules.numpy_interface.dataset_adapter import numpy_support
 import numpy as np
-from PIL import Image
 import util
 
 #Class responsible for 2D image related processing steps.
@@ -122,19 +121,19 @@ class ImageProcessor():
 
         img1 = np.reshape(np.ravel(img1), (width, height, 3))
 
-        if img1.shape[0] < height:
-            dif = height - img1.shape[0]
-            arr = np.full((dif,img1.shape[1],3),255)
-            img1 = np.vstack((arr,img1))
+        #if img1.shape[0] < height:
+        #    dif = height - img1.shape[0]
+        #    arr = np.full((dif,img1.shape[1],3),255)
+        #    img1 = np.vstack((arr,img1))
 
-        if img1.shape[1] < width:
-            dif = width - img1.shape[1]
-            arr = np.full((img1.shape[0],dif,3),255)
-            img1 = np.hstack((img1,arr))
+        #if img1.shape[1] < width:
+        #    dif = width - img1.shape[1]
+        #    arr = np.full((img1.shape[0],dif,3),255)
+        #    img1 = np.hstack((img1,arr))
 
-        if img1.shape[0] > height or img1.shape[1] > width:
-            im = Image.fromarray(img1)
-            img1 = np.asarray(im.resize((width,height)))
+        #if img1.shape[0] > height or img1.shape[1] > width:
+        #    im = Image.fromarray(img1)
+        #    img1 = np.asarray(im.resize((width,height)))
 
         img1 = img1 / 255
 
@@ -193,5 +192,8 @@ class ImageProcessor():
         castFilter.SetInputData(resultImg)
         castFilter.SetOutputScalarTypeToUnsignedChar()
         castFilter.Update()
+
+        filename = (r"C:\Users\marwi\OneDrive\Desktop\TU\ws21\AE\out\2D\texture_debug_optimized.png")
+        util.writeImage(castFilter.GetOutput(), filename)
 
         return castFilter.GetOutput()

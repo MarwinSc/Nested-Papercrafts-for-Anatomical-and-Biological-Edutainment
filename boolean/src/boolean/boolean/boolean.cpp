@@ -82,14 +82,14 @@ namespace ae{
 		input.close();
 
 		K::Plane_3 cut_plane = K::Plane_3(K::Point_3(o_x, o_y, o_z), K::Vector_3(n_x, n_y, n_z));
-		mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
-		mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
+		//mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
+		//mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
 
 		mesh = boolean_interface::removeDegenFaces(mesh,0.2f,cut_plane);
 		mesh = boolean_interface::connectBoundaries(mesh, K::Vector_3(n_x, n_y, n_z));
 
 	}
-
+	
 	Mesh boolean_interface::connectBoundaries(Mesh mesh, K::Vector_3 compareNormal) {
 		std::vector<halfedge_descriptor> boundary_halfedges;
 		std::vector<vertex_descriptor> boundary_vertices;
@@ -125,6 +125,7 @@ namespace ae{
 		}
 
 		//pick one point at random and find the closest in the other loop
+		/*
 		bool found = false;
 		int i = 0;
 		halfedge_descriptor secondPoint;
@@ -151,13 +152,13 @@ namespace ae{
 			}
 		}
 
-		//order other vector
+				//order other vector
 		std::vector<halfedge_descriptor> boundary_halfedges_first;
 		startPoint = secondPoint;
 		current = secondPoint;
 		boundary_halfedges_first.push_back(startPoint);
 		do {
-			//iterate over one boundary loop 
+			//iterate over one boundary loop
 			for (halfedge_descriptor hd : halfedges_around_target(mesh.source(current), mesh)) {
 				if (mesh.face(hd) == Mesh::null_face() && hd != current) {
 					current = hd;
@@ -166,9 +167,81 @@ namespace ae{
 			}
 		} while (startPoint != current);
 
-		//iterate over length and add triangles
+		*/
 
-		Mesh m;
+
+
+		//pick the vertices with the highest coordinates in both loops 
+		halfedge_descriptor highest_firstLoop;
+		K::Point_3 highest_pt = K::Point_3(0.0,0.0,0.0);
+		double sumHighest_first = highest_pt.x() + highest_pt.y() + highest_pt.z();
+		for (halfedge_descriptor hd : boundary_halfedges) {
+			K::Point_3 pt = mesh.point(mesh.target(hd));
+
+			sumHighest_first = highest_pt.x() + highest_pt.y() + highest_pt.z();
+			double sumCurrent = pt.x() + pt.y() + pt.z();
+			if (sumCurrent > sumHighest_first)
+			{
+				highest_firstLoop = hd;
+				highest_pt = pt;
+			}
+		}
+
+		halfedge_descriptor highest_secondLoop;
+		highest_pt = K::Point_3(0.0, 0.0, 0.0);
+		double sumHighest_second = highest_pt.x() + highest_pt.y() + highest_pt.z();
+		for (halfedge_descriptor hd : boundary_halfedges_second) {
+			K::Point_3 pt = mesh.point(mesh.target(hd));
+
+			sumHighest_second = highest_pt.x() + highest_pt.y() + highest_pt.z();
+			double sumCurrent = pt.x() + pt.y() + pt.z();
+			if (sumCurrent > sumHighest_second)
+			{
+				highest_secondLoop = hd;
+				highest_pt = pt;
+			}
+		}
+
+		halfedge_descriptor startPoint_first;
+		halfedge_descriptor startPoint_second;
+		//to ensures firstLoop is the outer loop
+		if (sumHighest_first > sumHighest_second) {
+			startPoint_first = highest_firstLoop;
+			startPoint_second = highest_secondLoop;
+		}
+		else {
+			startPoint_first = highest_secondLoop;
+			startPoint_second = highest_firstLoop;
+		}
+
+		//order both vectors
+		std::vector<halfedge_descriptor> boundary_halfedges_first;
+		current = startPoint_first;
+		boundary_halfedges_first.push_back(startPoint_first);
+		do {
+			//iterate over one boundary loop 
+			for (halfedge_descriptor hd : halfedges_around_source(mesh.target(current), mesh)) {
+				if (mesh.face(hd) == Mesh::null_face() && hd != current) {
+					current = hd;
+					boundary_halfedges_first.push_back(hd);
+				} 
+			}
+		} while (startPoint_first != current);
+
+		boundary_halfedges_second.clear();
+		current = startPoint_second;
+		boundary_halfedges_second.push_back(startPoint_second);
+		do {
+			//iterate over one boundary loop 
+			for (halfedge_descriptor hd : halfedges_around_target(mesh.source(current), mesh)) {
+				if (mesh.face(hd) == Mesh::null_face() && hd != current) {
+					current = hd;
+					boundary_halfedges_second.push_back(hd);
+				}
+			}
+		} while (startPoint_second != current);
+
+		//iterate over length and add triangles
 
 		int size_first = boundary_halfedges_first.size();
 		int size_second = boundary_halfedges_second.size();
@@ -191,124 +264,109 @@ namespace ae{
 				vertex_descriptor v = tempMesh.target(boundary_halfedges_first.at(indexFirstLoop));
 				vertex_descriptor w = tempMesh.target(boundary_halfedges_first.at(indexFirstLoop + 1));
 
-				face_descriptor newFace = tempMesh.add_face(w, v, u);
-				K::Vector_3 normal = PMP::compute_face_normal(newFace, tempMesh);
-				float s = CGAL::scalar_product(normal, compareNormal);
-				aspectRatio1 = std::abs(1.33333 - boolean_interface::triangleAspectRatio(newFace, tempMesh));
-				
-				//offset edgeloops
-				
-				if (indexSecondLoop < size_second - 1){
-					vertex_descriptor vd = tempMesh.target(boundary_halfedges_second.at(indexSecondLoop + 1));
-					K::Vector_3 tempNormal = (compareNormal / CGAL::sqrt(compareNormal.squared_length())) / 100.0;
-					K::Point_3 pt = tempMesh.point(vd);
-					K::Point_3 new_pt = K::Point_3(pt.x() + tempNormal.x(), pt.y() + tempNormal.y(), pt.z() + tempNormal.z());
-					tempMesh.point(vd) = new_pt;
-				}
-				/*
-				for (vertex_descriptor vd : boundary_vertices) {
-					if (vd != u && vd != v && vd != w) {
-						K::Vector_3 tempNormal = (compareNormal / CGAL::sqrt(compareNormal.squared_length())) / 3.0;
+				face_descriptor newFace = tempMesh.add_face(u,v,w);
+				if (!(newFace == tempMesh.null_face())) {
+					K::Vector_3 normal = PMP::compute_face_normal(newFace, tempMesh);
+					float s = CGAL::scalar_product(normal, compareNormal);
+					aspectRatio1 = std::abs(1.33333 - boolean_interface::triangleAspectRatio(newFace, tempMesh));
+
+					//offset edgeloops to provoke intersection
+
+					if (indexSecondLoop < size_second - 1) {
+						vertex_descriptor vd = tempMesh.target(boundary_halfedges_second.at(indexSecondLoop + 1));
+						K::Vector_3 tempNormal = (compareNormal / CGAL::sqrt(compareNormal.squared_length())) / 100.0;
 						K::Point_3 pt = tempMesh.point(vd);
 						K::Point_3 new_pt = K::Point_3(pt.x() + tempNormal.x(), pt.y() + tempNormal.y(), pt.z() + tempNormal.z());
 						tempMesh.point(vd) = new_pt;
 					}
-				}
-				*/
-				tempMesh.collect_garbage();
-				std::ofstream temp("temp.off");
-				temp.precision(17);
-				temp << tempMesh;
-				temp.close();
-				temp.clear();
 
-				bool intersection = PMP::does_self_intersect(tempMesh);
-				std::cout << "First Loop Scalarproduct: " << s << std::endl;
-				std::cout << "Second Loop Intersection: " << intersection << std::endl;
+					tempMesh.collect_garbage();
+					std::ofstream temp("../out/3D/temp.off");
+					temp.precision(17);
+					temp << tempMesh;
+					temp.close();
+					temp.clear();
 
-				if (s > 0.0 && !intersection) {
-					firstTriValid = true;
+					bool intersection = PMP::does_self_intersect(tempMesh);
+					std::cout << "First Loop Scalarproduct: " << s << std::endl;
+					std::cout << "Second Loop Intersection: " << intersection << std::endl;
+
+					if (s > 0.0 && !intersection) {
+						firstTriValid = true;
+					}
 				}
+				
 			}
 
 			Mesh tempMesh2 = Mesh(mesh);
 
 			if (indexSecondLoop < size_second - 1) {
 
-				vertex_descriptor u = tempMesh.target(boundary_halfedges_second.at(indexSecondLoop));
-				vertex_descriptor v = tempMesh.target(boundary_halfedges_first.at(indexFirstLoop));
-				vertex_descriptor w = tempMesh.target(boundary_halfedges_second.at(indexSecondLoop + 1));
+				vertex_descriptor u = mesh.target(boundary_halfedges_second.at(indexSecondLoop));
+				vertex_descriptor v = mesh.target(boundary_halfedges_first.at(indexFirstLoop));
+				vertex_descriptor w = mesh.target(boundary_halfedges_second.at(indexSecondLoop + 1));
 
-				face_descriptor newFace = tempMesh2.add_face(w, v, u);
-				K::Vector_3 normal = PMP::compute_face_normal(newFace, tempMesh2);
-				float s = CGAL::scalar_product(normal, compareNormal);
-				aspectRatio2 = std::abs(1.33333 - boolean_interface::triangleAspectRatio(newFace, tempMesh2));
-				
-				//offset edgeloops
-				
-				if (indexFirstLoop < size_first - 1) {
-					vertex_descriptor vd = tempMesh2.target(boundary_halfedges_first.at(indexFirstLoop + 1));
-					K::Vector_3 tempNormal = (compareNormal / CGAL::sqrt(compareNormal.squared_length())) / 100.0;
-					K::Point_3 pt = tempMesh2.point(vd);
-					K::Point_3 new_pt = K::Point_3(pt.x() + tempNormal.x(), pt.y() + tempNormal.y(), pt.z() + tempNormal.z());
-					tempMesh2.point(vd) = new_pt;
-				}
-				/*
-				for (vertex_descriptor vd : boundary_vertices) {
-					if (vd != u && vd != v && vd != w) {
-						K::Vector_3 tempNormal = (compareNormal / CGAL::sqrt(compareNormal.squared_length())) / 3.0;
+				face_descriptor newFace = tempMesh2.add_face(u,v,w);
+				if (!(newFace==tempMesh2.null_face())) {
+					K::Vector_3 normal = PMP::compute_face_normal(newFace, tempMesh2);
+					float s = CGAL::scalar_product(normal, compareNormal);
+					aspectRatio2 = std::abs(1.33333 - boolean_interface::triangleAspectRatio(newFace, tempMesh2));
+
+					//offset edgeloops to provoke intersection
+
+					if (indexFirstLoop < size_first - 1) {
+						vertex_descriptor vd = tempMesh2.target(boundary_halfedges_first.at(indexFirstLoop + 1));
+						K::Vector_3 tempNormal = (compareNormal / CGAL::sqrt(compareNormal.squared_length())) / 100.0;
 						K::Point_3 pt = tempMesh2.point(vd);
 						K::Point_3 new_pt = K::Point_3(pt.x() + tempNormal.x(), pt.y() + tempNormal.y(), pt.z() + tempNormal.z());
 						tempMesh2.point(vd) = new_pt;
 					}
-				}
-				*/
-				tempMesh2.collect_garbage();
-				std::ofstream temp2("temp2.off");
-				temp2.precision(17);
-				temp2 << tempMesh2;
-				temp2.close();
-				temp2.clear();
 
-				bool intersection = PMP::does_self_intersect(tempMesh2);
-				std::cout << "Second Loop Scalarproduct: " << s << std::endl;
-				std::cout << "Second Loop Intersection: " << intersection << std::endl;
-				
-				if (s > 0.0 && !intersection) {
-					secondTriValid = true;
+					tempMesh2.collect_garbage();
+					std::ofstream temp2("../out/3D/temp2.off");
+					temp2.precision(17);
+					temp2 << tempMesh2;
+					temp2.close();
+					temp2.clear();
+
+					bool intersection = PMP::does_self_intersect(tempMesh2);
+					std::cout << "Second Loop Scalarproduct: " << s << std::endl;
+					std::cout << "Second Loop Intersection: " << intersection << std::endl;
+
+					if (s > 0.0 && !intersection) {
+						secondTriValid = true;
+					}
 				}
+
 			}
 
 			if (firstTriValid && secondTriValid) {
 				if (aspectRatio1 < aspectRatio2) {
-					vertex_descriptor u = mesh.target(boundary_halfedges_second.at(indexSecondLoop));
-					vertex_descriptor v = mesh.target(boundary_halfedges_first.at(indexFirstLoop));
-					vertex_descriptor w = mesh.target(boundary_halfedges_first.at(indexFirstLoop + 1));
-					face_descriptor newFace = mesh.add_face(w, v, u);
-					indexFirstLoop++;
+					secondTriValid = false;
 				}
 				else {
-					vertex_descriptor u = mesh.target(boundary_halfedges_second.at(indexSecondLoop));
-					vertex_descriptor v = mesh.target(boundary_halfedges_first.at(indexFirstLoop));
-					vertex_descriptor w = mesh.target(boundary_halfedges_second.at(indexSecondLoop + 1));
-					face_descriptor newFace = mesh.add_face(w, v, u);
-					indexSecondLoop++;
+					firstTriValid = false;
 				}
 			}
-			else if (firstTriValid) {
+
+			if (firstTriValid) {
 				vertex_descriptor u = mesh.target(boundary_halfedges_second.at(indexSecondLoop));
 				vertex_descriptor v = mesh.target(boundary_halfedges_first.at(indexFirstLoop));
 				vertex_descriptor w = mesh.target(boundary_halfedges_first.at(indexFirstLoop + 1));
-				face_descriptor newFace = mesh.add_face(w, v, u);
+				face_descriptor newFace = mesh.add_face(u,v,w);
 				indexFirstLoop++;
 			}
 			else if (secondTriValid) {
 				vertex_descriptor u = mesh.target(boundary_halfedges_second.at(indexSecondLoop));
 				vertex_descriptor v = mesh.target(boundary_halfedges_first.at(indexFirstLoop));
 				vertex_descriptor w = mesh.target(boundary_halfedges_second.at(indexSecondLoop + 1));
-				face_descriptor newFace = mesh.add_face(w, v, u);
+				face_descriptor newFace = mesh.add_face(u, v, w);
 				indexSecondLoop++;
 			}
+			//else {
+				//indexFirstLoop++;
+				//indexSecondLoop++;
+			//}
 
 			mesh.collect_garbage();
 			std::cout << "connected boundaries\n";

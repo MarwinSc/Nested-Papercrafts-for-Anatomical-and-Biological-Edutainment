@@ -88,13 +88,7 @@ class Organizer():
         self.ren.ResetCamera()
 
     def onMultiply(self,depthPeeling,filter,brighten):
-        '''
-        Forwarding the rendering and color multiplication of the loaded structures.
-        :param depthPeeling:
-        :param filter:
-        :param brighten:
-        :return:
-        '''
+
         imageActor = vtk.vtkImageActor()
 
         #firsttime multiplication
@@ -217,9 +211,6 @@ class Organizer():
 
     def project(self,resolution=[500,500]):
         self.hierarchical_mesh_anchor.project(resolution,0)
-
-    def project_test(self):
-        self.hierarchical_mesh_anchor.createLabels()
 
     def clearOutputDirectory(self):
         '''

@@ -426,13 +426,14 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     edges = vtk.vtkFeatureEdges()
     edges.SetInputData(transform.GetOutput())
     edges.BoundaryEdgesOn()
+    edges.ColoringOff()
     edges.Update()
 
     labelsMapper = vtk.vtkPolyDataMapper()
     labelsMapper.SetInputData(edges.GetOutput())
     labelsActor = vtk.vtkActor()
     labelsActor.SetMapper(labelsMapper)
-    labelsActor.GetProperty().SetColor(100.0, 100.0, 100.0)
+    labelsActor.GetProperty().SetColor([0.3, 0.3, 0.3])
     labelsActor.GetProperty().SetLineWidth(5.0)
 
     # ----------------------

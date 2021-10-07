@@ -1,6 +1,4 @@
 PyQt5~=5.15.4
 numpy~=1.20.2
-projector~=0.1.1
 trimesh~=3.9.13
 meshio~=4.3.12
-Pillow~=8.2.0

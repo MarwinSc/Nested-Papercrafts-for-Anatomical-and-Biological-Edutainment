@@ -84,7 +84,7 @@ class MeshProcessing():
             poly = mesh
 
         elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Cube:
-            poly = util.projectMeshToBoundsAlongCubeNormals(unfolded.GetMapper().GetInput())
+            poly = util.projectMeshToBounds(unfolded.GetMapper().GetInput())
             util.writeStl(poly,"cubeDedicatedMesh")
 
         elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Clipping:
