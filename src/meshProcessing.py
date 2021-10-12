@@ -57,7 +57,7 @@ class MeshProcessing():
             tCoords = mesh.GetPointData().GetTCoords()
 
             #mesh = self.normalizeUV(mesh)
-            mesh = self.calcMeshNormals(mesh)
+            mesh = util.calcMeshNormals(mesh)
 
             mapper = vtk.vtkPolyDataMapper()
             mapper.SetInputData(mesh)
@@ -108,7 +108,7 @@ class MeshProcessing():
         mesh = util.readObj(filename)
 
         mesh = self.normalizeUV(mesh)
-        mesh = self.calcMeshNormals(mesh)
+        mesh = util.calcMeshNormals(mesh)
 
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(mesh)
@@ -225,19 +225,6 @@ class MeshProcessing():
         mesh.GetPointData().SetTCoords(newTCoords)
         return mesh
 
-    def calcMeshNormals(self,polydata):
-        '''
-        Filles in the normals of a vtk polydata.
-        :param polydata: 
-        :return: 
-        '''''
-        normals = vtk.vtkPolyDataNormals()
-        normals.ComputePointNormalsOff()
-        normals.ComputeCellNormalsOn()
-        normals.ConsistencyOn()
-        normals.SetInputData(polydata)
-        normals.Update()
-        return normals.GetOutput()
 
     def cutMeshWithPlanes(self,mesh,cutPlanes, centerPoint):
         '''

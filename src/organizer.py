@@ -210,7 +210,7 @@ class Organizer():
 
 
     def project(self,resolution=[500,500]):
-        self.hierarchical_mesh_anchor.project(resolution,0)
+        self.hierarchical_mesh_anchor.project(resolution)
 
     def clearOutputDirectory(self):
         '''

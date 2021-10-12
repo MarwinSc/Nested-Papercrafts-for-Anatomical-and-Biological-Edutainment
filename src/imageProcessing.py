@@ -2,6 +2,7 @@ import vtkmodules.all as vtk
 from vtkmodules.numpy_interface.dataset_adapter import numpy_support
 import numpy as np
 import util
+from matplotlib import pyplot as plt
 
 #Class responsible for 2D image related processing steps.
 class ImageProcessor():
@@ -76,66 +77,26 @@ class ImageProcessor():
         return result
 
     #method carrying out the normalization and multiplication of the structurs
-    def normalizeMultiplication(self, image, image2, width, height):
+    def normalizeMultiplication(self, image, image2):
 
-        img1 = numpy_support.vtk_to_numpy(image.GetPointData().GetScalars())[:, 0:3]
-        img2 = numpy_support.vtk_to_numpy(image2.GetPointData().GetScalars())[:, 0:3]
-
-        img1.astype(float)
-        img2.astype(float)
-
-        img1 = np.reshape(np.ravel(img1), (height, width, 3))
-        img2 = np.reshape(np.ravel(img2), (height, width, 3))
-
-        img1 = img1 / 255
-        img2 = img2 / 255
+        img1 = image / 255
+        img2 = image2 / 255
 
         result = (img1 * img2)
 
+        plt.imshow(result, interpolation='nearest')
+        plt.show()
+
         result = result * 255
 
-        resultImg = vtk.vtkImageData()
+        return result
 
-        dy, dx, dz = result.shape
+    def optimizedBrighten(self,image):
 
-        vtkResult = numpy_support.numpy_to_vtk(result.reshape(dy * dx, dz))
+        plt.imshow(image, interpolation='nearest')
+        plt.show()
 
-        resultImg.SetSpacing(1., 1., 1.)
-        resultImg.SetOrigin(0., 0., 0.)
-        resultImg.SetDimensions(dx, dy, 1)
-        resultImg.AllocateScalars(numpy_support.get_vtk_array_type(result.dtype), dz)
-        resultImg.GetPointData().SetScalars(vtkResult)
-
-        castFilter = vtk.vtkImageCast()
-        castFilter.SetInputData(resultImg)
-        castFilter.SetOutputScalarTypeToUnsignedChar()
-        castFilter.Update()
-
-        return castFilter
-
-    def optimizedBrighten(self,image,width,height,name = "0"):
-
-        img1 = numpy_support.vtk_to_numpy(image.GetPointData().GetScalars())[:, 0:3]
-
-        img1.astype(float)
-
-        img1 = np.reshape(np.ravel(img1), (width, height, 3))
-
-        #if img1.shape[0] < height:
-        #    dif = height - img1.shape[0]
-        #    arr = np.full((dif,img1.shape[1],3),255)
-        #    img1 = np.vstack((arr,img1))
-
-        #if img1.shape[1] < width:
-        #    dif = width - img1.shape[1]
-        #    arr = np.full((img1.shape[0],dif,3),255)
-        #    img1 = np.hstack((img1,arr))
-
-        #if img1.shape[0] > height or img1.shape[1] > width:
-        #    im = Image.fromarray(img1)
-        #    img1 = np.asarray(im.resize((width,height)))
-
-        img1 = img1 / 255
+        img1 = image / 255
 
         averagePixelRed = np.mean(img1[:,:,0])
         averagePixelGreen = np.mean(img1[:,:,1])
@@ -176,24 +137,9 @@ class ImageProcessor():
 
         img1 = img1 * 255
 
-        resultImg = vtk.vtkImageData()
+        plt.imshow(img1, interpolation='nearest')
+        plt.show()
 
-        dy, dx, dz = img1.shape
+        return img1
 
-        vtkResult = numpy_support.numpy_to_vtk(img1.reshape(dy * dx, dz))
 
-        resultImg.SetSpacing(1., 1., 1.)
-        resultImg.SetOrigin(0., 0., 0.)
-        resultImg.SetDimensions(dx, dy, 1)
-        resultImg.AllocateScalars(numpy_support.get_vtk_array_type(img1.dtype), dz)
-        resultImg.GetPointData().SetScalars(vtkResult)
-
-        castFilter = vtk.vtkImageCast()
-        castFilter.SetInputData(resultImg)
-        castFilter.SetOutputScalarTypeToUnsignedChar()
-        castFilter.Update()
-
-        filename = (r"C:\Users\marwi\OneDrive\Desktop\TU\ws21\AE\out\2D\texture_debug_optimized.png")
-        util.writeImage(castFilter.GetOutput(), filename)
-
-        return castFilter.GetOutput()

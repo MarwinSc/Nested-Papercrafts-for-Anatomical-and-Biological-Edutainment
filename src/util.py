@@ -304,6 +304,9 @@ def projectMeshToBounds(mesh):
     hull.AddCubeFacePlanes()
     hull.Update()
 
+    #prevent occasional error on empty normals
+    mesh = calcMeshNormals(mesh)
+
     normalsFilter = vtk.vtkPolyDataNormals()
     normalsFilter.SetInputData(mesh)
     normalsFilter.ComputePointNormalsOn()
@@ -382,3 +385,17 @@ def appendMeshes(meshes):
     clean.SetInputData(append.GetOutput())
     clean.Update()
     return clean.GetOutput()
+
+def calcMeshNormals(polydata):
+    '''
+    Filles in the normals of a vtk polydata.
+    :param polydata: 
+    :return: 
+    '''''
+    normals = vtk.vtkPolyDataNormals()
+    normals.ComputePointNormalsOff()
+    normals.ComputeCellNormalsOn()
+    normals.ConsistencyOn()
+    normals.SetInputData(polydata)
+    normals.Update()
+    return normals.GetOutput()

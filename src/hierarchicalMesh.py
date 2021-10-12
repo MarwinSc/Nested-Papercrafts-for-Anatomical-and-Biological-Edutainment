@@ -435,7 +435,7 @@ class HierarchicalMesh(object):
                 unfoldedString += "Not Unfolded, "
         self.label.setText(unfoldedString)
 
-    def project(self,resolution,idx,textureIdx = 0):
+    def project(self,resolution,textureIdx = 0):
         '''
         Projects all anatomical structures of the hierarchy onto their respective unfolded papermesh.
         Creating the unfolded paper template for each papermesh.
@@ -444,107 +444,88 @@ class HierarchicalMesh(object):
 
             self.clearUiButtons()
             previousImage = None
+            previousPreviewTexture = None
             #creating unfoldings per mesh piece
             if hasattr(self,"meshPieces"):
                 for j, unfolded_piece in enumerate(self.unfoldedActors):
 
-                    for i, mesh in enumerate(self.meshes):
-
-                        dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh,unfolded_piece)
-                        projection = projector.projectPerTriangle(dedicatedMesh,mesh.getActor(),idx,resolution)
-                        img = projector.createUnfoldedPaperMesh(projection, unfolded_piece, self.gluetabs[j], idx)
-                        #labels_img = util.VtkToNp(self.renderLabels())
-                        img = projector.mask(img)
-                        #texture = texture + label
-                        dy, dx, dz = img.shape
-                        img = util.NpToVtk(img, dx, dy, dz)
-
-                        if i > 0:
-                            previousImage = self.multiplyProjections(img, previousImage, textureIdx)
-                        else:
-                            previousImage = self.multiplyProjections(img, None, textureIdx)
-
-                        idx += 1
-
-                    filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(textureIdx))
-                    readerFac = vtk.vtkImageReader2Factory()
-                    imageReader = readerFac.CreateImageReader2(filename)
-                    imageReader.SetFileName(filename)
-                    texture = vtk.vtkTexture()
-                    texture.SetInputConnection(imageReader.GetOutputPort())
-
-                    unfolded_piece.GetMapper().SetInputData(self.meshProcessor.normalizeUV(unfolded_piece.GetMapper().GetInput()))
-
-                    unfolded_piece.SetTexture(texture)
-                    unfolded_piece.Modified()
-                    unfolded_piece.GetProperty().SetOpacity(1.0)
-
+                    unfolded_piece = self.project_helper(unfolded_piece,resolution,textureIdx,j)
                     textureIdx += 1
 
                     self.updateUiButtons(unfolded_piece)
+                    print("Projected a hierarchy level.")
 
             #create single unfolding if mesh isn't cut
             else:
-                for i, mesh in enumerate(self.meshes):
-                    dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, self.unfoldedActor)
-                    projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
-                    img = projector.createUnfoldedPaperMesh(projection, self.unfoldedActor, self.gluetab, idx)
-                    #labels_img = util.VtkToNp(self.renderLabels())
-                    img = projector.mask(img)
-                    #texture = texture + label
-                    dy, dx, dz = img.shape
-                    img = util.NpToVtk(img,dx,dy,dz)
 
-                    if i > 0:
-                        previousImage = self.multiplyProjections(img, previousImage, textureIdx)
-                    else:
-                        previousImage = self.multiplyProjections(img, None, textureIdx)
-
-                    idx += 1
-
-                filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(textureIdx))
-                readerFac = vtk.vtkImageReader2Factory()
-                imageReader = readerFac.CreateImageReader2(filename)
-                imageReader.SetFileName(filename)
-                texture = vtk.vtkTexture()
-                texture.SetInputConnection(imageReader.GetOutputPort())
-
-                self.unfoldedActor.GetMapper().SetInputData(self.meshProcessor.normalizeUV(self.unfoldedActor.GetMapper().GetInput()))
-
-                self.unfoldedActor.SetTexture(texture)
-                self.unfoldedActor.Modified()
-                self.unfoldedActor.GetProperty().SetOpacity(1.0)
-
+                self.unfoldedActor = self.project_helper(self.unfoldedActor,resolution,textureIdx)
                 textureIdx += 1
 
                 self.updateUiButtons(self.unfoldedActor)
+                print("Projected a hierarchy level.")
 
         for child in self.children:
-            child.project(resolution,idx,textureIdx)
+            child.project(resolution,textureIdx)
+
+    def project_helper(self,actor,resolution,textureIdx, j = -1):
+        idx = 0
+        for i, mesh in enumerate(self.meshes):
+            dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
+            projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
+            if j < 0:
+                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetab, idx)
+            else:
+                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetabs[j], idx)
+            img = projector.mask(util.VtkToNp(img))
+            # dy, dx, dz = img.shape
+            # img = util.NpToVtk(img, dx, dy, dz)
+            # filename = (r"C:\Users\marwi\OneDrive\Desktop\TU\ws21\AE\out\2D\texture_debug_before_optimized.png")
+            # util.writeImage(img, filename)
+
+            previewTexture = projector.mask(util.VtkToNp(previewTexture))
+            if i > 0:
+                previousPreviewTexture = self.multiplyProjections(previewTexture, previousPreviewTexture, textureIdx)
+                previousImage = self.multiplyProjections(img, previousImage, textureIdx)
+            else:
+                previousPreviewTexture = self.multiplyProjections(previewTexture, None, textureIdx)
+                previousImage = self.multiplyProjections(img, None, textureIdx)
+
+            filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(textureIdx))
+            dx, dy, dz = previousImage.shape
+            util.writeImage(util.NpToVtk(previousImage, dx, dy, dz), filename)
+            idx += 1
+            print("Projected a mesh")
+
+        # Set Texture for preview
+        texture = vtk.vtkTexture()
+        dx, dy, dz = previousPreviewTexture.shape
+        previousPreviewTexture = util.NpToVtk(previousPreviewTexture, dx, dy, dz)
+        castFilter = vtk.vtkImageCast()
+        castFilter.SetInputData(previousPreviewTexture)
+        castFilter.SetOutputScalarTypeToUnsignedChar()
+        castFilter.Update()
+        texture.SetInputData(castFilter.GetOutput())
+
+        actor.GetMapper().SetInputData(self.meshProcessor.normalizeUV(actor.GetMapper().GetInput()))
+
+        actor.SetTexture(texture)
+        actor.Modified()
+        actor.GetProperty().SetOpacity(1.0)
+
+        return actor
 
     def multiplyProjections(self,image,prev_image,idx):
         '''
         Multiplies a previously written image and a given image and writes the result to disk.
-        :param image: the previously written file
+        :param image: a numpy array, the previously written file
         :param prev_image: the image to multiply with
         :param idx: number to name the created image file.
         '''
         # multiply created unfoldings
 
-        imageDim = image.GetDimensions()
-        width = imageDim[0]
-        height = imageDim[1]
-        filename = (r"C:\Users\marwi\OneDrive\Desktop\TU\ws21\AE\out\2D\texture_debug_before_optimized.png")
-        util.writeImage(image, filename)
-        result = self.imageProcessor.optimizedBrighten(image, width, height)
-        if prev_image:
-            result = self.imageProcessor.normalizeMultiplication(prev_image, result, width,height).GetOutput()
-
-        writer = vtk.vtkPNGWriter()
-        filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(idx))
-        writer.SetFileName(filename)
-        writer.SetInputData(result)
-        writer.Write()
+        result = self.imageProcessor.optimizedBrighten(image)
+        if prev_image is not None:
+            result = self.imageProcessor.normalizeMultiplication(prev_image, result)
         return result
 
     def getAllMeshes(self, asActor = True):

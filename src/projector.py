@@ -136,7 +136,7 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
 
         # --------------
         #dy, dx, dz = triangle.shape
-        print(i)
+        #print(i)
         #filename = os.path.join(self.dirname, "../out/2D/triangle{}.png".format(i))
         #util.writeImage(util.NpToVtk(triangle,dx,dy,dz),filename)
 
@@ -332,7 +332,7 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     :param dedicatedPaperMesh: the created paperMesh with uvs mapped to the created long texture.
     :param originalPaperMesh: the general papermesh with unfolded uv layout for this structure that is imported.
     :param idx: number for the filename.
-    :return:
+    :return: a vtk image
     '''
     mesh = originalPaperMesh.GetMapper().GetInput()
 
@@ -453,12 +453,21 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     com.Update()
     center = com.GetCenter()
 
+    bounds = actor.GetBounds()
+    width = abs(bounds[1]) + abs(bounds[0])
+    height = abs(bounds[5]) + abs(bounds[4])
+    if width > height:
+        scale = width
+    else:
+        scale = height
+
     camera = vtk.vtkCamera()
-    camera.SetPosition(center[0], -500, center[2])
+    camera.SetPosition(center[0], -1, center[2])
     camera.SetFocalPoint(center)
     camera.SetViewUp(0, 0, 1)
     camera.ParallelProjectionOn()
-    camera.SetParallelScale(500.0)
+    #0.6 seems a good factor for the bounds as camera zoom
+    camera.SetParallelScale(scale*0.65)
     ren, iren, renWin, wti = util.getbufferRenIntWin(camera, width=6000, height=6000)
     renWin.SetOffScreenRendering(1)
 
@@ -467,15 +476,31 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     ren.AddActor(pointActor)
 
     renWin.Render()
-
     wti.Update()
 
-    img = util.VtkToNp(wti.GetOutput())
+    img = (wti.GetOutput())
 
-    filename = os.path.join(dirname, "../out/2D/debug_preMask.png")
-    util.writeImage(wti.GetOutput(),filename)
+    #filename = os.path.join(dirname, "../out/2D/debug_preMask.png")
+    #util.writeImage(wti.GetOutput(),filename)
 
-    return img
+    #-----additional render for preview texture
+
+    ren.RemoveAllViewProps()
+    ren.AddActor(actor)
+    ren.AddActor(pointActor)
+
+    renWin.Render()
+    wti2 = vtk.vtkWindowToImageFilter()
+    wti2.SetInput(renWin)
+    wti2.SetInputBufferTypeToRGB()
+    wti2.ReadFrontBufferOff()
+    wti2.Update()
+
+    previewTexture = (wti2.GetOutput())
+    #filename = os.path.join(dirname, "../out/2D/debug_preview_preMask.png")
+    #util.writeImage(wti2.GetOutput(),filename)
+
+    return img,previewTexture
 
 
 def mask(img):

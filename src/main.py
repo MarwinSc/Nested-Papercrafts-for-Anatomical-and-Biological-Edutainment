@@ -580,11 +580,11 @@ class Ui_MainWindow(object):
         except ValueError:
             return False
 
-
+    '''
     class MouseInteractorHighlightCell(vtk.vtkInteractorStyleTrackballCamera):
-        '''
+        
         Previously handled the manual flattening of the projection meshes, now obsolete.
-        '''
+        
         def __init__(self, org, parent):
             self.AddObserver("RightButtonPressEvent", self.rightButtonPressEvent)
             self.LastPickedCell = None
@@ -617,7 +617,7 @@ class Ui_MainWindow(object):
 
             self.OnRightButtonDown()
             return
-
+    '''
 class SimpleView(QtWidgets.QMainWindow):
 
     def __init__(self, parent=None):
@@ -628,10 +628,10 @@ class SimpleView(QtWidgets.QMainWindow):
         self.ui.setupUi(self,org,self.ren)
         self.ui.vtkWidget.GetRenderWindow().AddRenderer(self.ren)
         self.iren = self.ui.vtkWidget.GetRenderWindow().GetInteractor()
-        style = self.ui.MouseInteractorHighlightCell(org, self.ui)
-        style.SetDefaultRenderer(self.ren)
-        #self.iren.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
-        self.iren.SetInteractorStyle(style)
+        #style = self.ui.MouseInteractorHighlightCell(org, self.ui)
+        #style.SetDefaultRenderer(self.ren)
+        self.iren.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
+        #self.iren.SetInteractorStyle(style)
         org.window = self.ui.vtkWidget.GetRenderWindow()
         org.iren = self.ui.vtkWidget.GetRenderWindow().GetInteractor()
 
