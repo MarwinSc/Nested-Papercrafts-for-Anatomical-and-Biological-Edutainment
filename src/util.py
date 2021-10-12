@@ -54,7 +54,9 @@ def NpToVtk(img,dx,dy,dz):
     resultImg.SetOrigin(0., 0., 0.)
     resultImg.SetDimensions(dx, dy, 1)
     resultImg.AllocateScalars(numpy_support.get_vtk_array_type(img.dtype), dz)
-    resultImg.GetPointData().SetScalars(vtkResult)
+    #resultImg.AllocateScalars(vtk.VTK_FLOAT,dz)
+    #resultImg.GetPointData().SetScalars(vtkResult)
+    resultImg.GetPointData().GetScalars().DeepCopy(vtkResult)
     return resultImg
 
 def VtkToNp(img):

@@ -9,6 +9,7 @@ from mu3d.mu3dpy.mu3d import Graph
 from boolean import boolean_interface
 from PyQt5 import QtWidgets
 
+
 class HierarchicalMesh(object):
     """
     Represents a hierarchy of meshes. Tree structure.
@@ -441,26 +442,19 @@ class HierarchicalMesh(object):
         Creating the unfolded paper template for each papermesh.
         '''
         if self.parent:
-
             self.clearUiButtons()
-            previousImage = None
-            previousPreviewTexture = None
             #creating unfoldings per mesh piece
             if hasattr(self,"meshPieces"):
                 for j, unfolded_piece in enumerate(self.unfoldedActors):
-
                     unfolded_piece = self.project_helper(unfolded_piece,resolution,textureIdx,j)
                     textureIdx += 1
-
                     self.updateUiButtons(unfolded_piece)
                     print("Projected a hierarchy level.")
 
             #create single unfolding if mesh isn't cut
             else:
-
                 self.unfoldedActor = self.project_helper(self.unfoldedActor,resolution,textureIdx)
                 textureIdx += 1
-
                 self.updateUiButtons(self.unfoldedActor)
                 print("Projected a hierarchy level.")
 
@@ -468,6 +462,10 @@ class HierarchicalMesh(object):
             child.project(resolution,textureIdx)
 
     def project_helper(self,actor,resolution,textureIdx, j = -1):
+        '''
+        Helper for projectMethod for either pieces of a cut mesh or an uncut papermesh.
+        Handels calling the necessary methods for projection with a given actor and the meshes of the current hierarchical level.
+        '''
         idx = 0
         for i, mesh in enumerate(self.meshes):
             dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
@@ -491,20 +489,23 @@ class HierarchicalMesh(object):
                 previousImage = self.multiplyProjections(img, None, textureIdx)
 
             filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(textureIdx))
-            dx, dy, dz = previousImage.shape
+            dy, dx, dz = previousImage.shape
             util.writeImage(util.NpToVtk(previousImage, dx, dy, dz), filename)
             idx += 1
             print("Projected a mesh")
 
         # Set Texture for preview
         texture = vtk.vtkTexture()
-        dx, dy, dz = previousPreviewTexture.shape
+        dy, dx, dz = previousPreviewTexture.shape
         previousPreviewTexture = util.NpToVtk(previousPreviewTexture, dx, dy, dz)
         castFilter = vtk.vtkImageCast()
         castFilter.SetInputData(previousPreviewTexture)
         castFilter.SetOutputScalarTypeToUnsignedChar()
         castFilter.Update()
         texture.SetInputData(castFilter.GetOutput())
+
+        #filename = os.path.join(self.dirname, "../out/2D/preview_texture{}.png".format(textureIdx))
+        #util.writeImage(previousPreviewTexture, filename)
 
         actor.GetMapper().SetInputData(self.meshProcessor.normalizeUV(actor.GetMapper().GetInput()))
 

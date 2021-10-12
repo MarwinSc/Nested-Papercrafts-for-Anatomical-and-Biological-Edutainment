@@ -2,7 +2,6 @@ import vtkmodules.all as vtk
 from vtkmodules.numpy_interface.dataset_adapter import numpy_support
 import numpy as np
 import util
-from matplotlib import pyplot as plt
 
 #Class responsible for 2D image related processing steps.
 class ImageProcessor():
@@ -84,17 +83,11 @@ class ImageProcessor():
 
         result = (img1 * img2)
 
-        plt.imshow(result, interpolation='nearest')
-        plt.show()
-
         result = result * 255
 
         return result
 
     def optimizedBrighten(self,image):
-
-        plt.imshow(image, interpolation='nearest')
-        plt.show()
 
         img1 = image / 255
 
@@ -110,7 +103,7 @@ class ImageProcessor():
         colored = np.where(x<=2.0)
 
         if averagePixelBlue > averagePixelGreen and averagePixelRed > averagePixelGreen:
-            img1[colored[0],colored[1],1] = img1[colored[0],colored[1],1] + (((img1[colored[0],colored[1],0]+img1[colored[0],colored[1],2])*0.48))
+            img1[colored[0],colored[1],1] = img1[colored[0],colored[1],1] + (((img1[colored[0],colored[1],0]+img1[colored[0],colored[1],2])*0.5))
             img1[colored[0],colored[1],0] = 1.0
             img1[colored[0],colored[1],2] = 1.0
 
@@ -118,7 +111,7 @@ class ImageProcessor():
             img1[black[0],black[1],1] = 0.0
             img1[black[0],black[1],2] = 1.0
         if averagePixelGreen > averagePixelBlue and averagePixelRed > averagePixelBlue:
-            img1[colored[0],colored[1],2] = img1[colored[0],colored[1],2] + (((img1[colored[0],colored[1],0]+img1[colored[0],colored[1],1])*0.48))
+            img1[colored[0],colored[1],2] = img1[colored[0],colored[1],2] + (((img1[colored[0],colored[1],0]+img1[colored[0],colored[1],1])*0.5))
             img1[colored[0],colored[1],1] = 1.0
             img1[colored[0],colored[1],0] = 1.0
 
@@ -126,7 +119,7 @@ class ImageProcessor():
             img1[black[0],black[1],1] = 1.0
             img1[black[0],black[1],2] = 0.0
         if averagePixelGreen > averagePixelRed and averagePixelBlue > averagePixelRed:
-            img1[colored[0],colored[1],0] = img1[colored[0],colored[1],0] + (((img1[colored[0],colored[1],2]+img1[colored[0],colored[1],1])*0.48))
+            img1[colored[0],colored[1],0] = img1[colored[0],colored[1],0] + (((img1[colored[0],colored[1],2]+img1[colored[0],colored[1],1])*0.5))
             img1[colored[0],colored[1],1] = 1.0
             img1[colored[0],colored[1],2] = 1.0
 
@@ -135,10 +128,7 @@ class ImageProcessor():
             img1[black[0],black[1],2] = 1.0
         img1[white[0], white[1], :] = 1.0
 
-        img1 = img1 * 255
-
-        plt.imshow(img1, interpolation='nearest')
-        plt.show()
+        img1 = np.clip(img1 * 255,0.0,255.0)
 
         return img1
 

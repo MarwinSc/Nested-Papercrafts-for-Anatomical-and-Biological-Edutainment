@@ -128,12 +128,6 @@ class Ui_MainWindow(object):
         filterButton.clicked.connect(onFilterColorButton)
         filterDialog.currentColorChanged.connect(onFilterColorChange)
 
-        def onBrightMuliplication():
-            org.brightenMultiplication()
-
-        brightMultiplicationButton = QtWidgets.QPushButton("Bright Multiplication & Finish")
-        brightMultiplicationButton.clicked.connect(onBrightMuliplication)
-
         brightenCheck = QtWidgets.QCheckBox("Brighten")
         brightenCheck.setChecked(True)
 
@@ -385,7 +379,6 @@ class Ui_MainWindow(object):
         paperCreationLayout.addWidget(unfoldIterationsTextfield)
         paperCreationLayout.addWidget(projectPerTriangle)
         paperCreationLayout.addWidget(resolutionWidth)
-        paperCreationLayout.addWidget(brightMultiplicationButton)
 
         #Insert Groups
         layoutLeft.addWidget(camGroup)

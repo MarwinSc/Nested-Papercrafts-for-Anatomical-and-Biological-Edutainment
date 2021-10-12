@@ -136,6 +136,7 @@ class MeshProcessing():
         newTCoords.SetNumberOfComponents(2)
 
         gmin, gmax = self.getMinMaxUV(mesh)
+        #uMin, uMax, vMin, vMax = self.getMinMaxUV(mesh, axis=True)
 
         # Normalize the uvs.
         for i in range(int(textureCoordinates.GetNumberOfTuples() / 3)):
@@ -275,33 +276,6 @@ class MeshProcessing():
             results.append(clip.GetOutput())
 
         return results
-
-    def booleanCGAL(self,mesh,cutout):
-        '''
-        Subtracts cutout from mesh with cgal boolean and remeshes the cutsurface.
-        :param mesh: filepath of the .off file, from the mesh that should be modified
-        :param cutout: filepath of the .off file, from the mesh that should be subtracted
-        :return:
-        '''
-
-        bool = boolean_interface.Boolean_Interface()
-        bool.boolean(mesh, cutout)
-        '''
-        graph = Graph()
-        filename = os.path.join(self.dirname, "difference.off")
-
-        graph.load(filename)
-        #todo use iterations from ui
-        if not graph.unfold(10000, 0):
-            print("failed to unfold :(")
-        else:
-            print("succesfully unfolded :)")
-            filename = os.path.join(self.dirname, "../out/3D/unfolded/difference.obj")
-            gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_difference.obj")
-            graph.save(filename, gluetabs_filename)
-        '''
-        #set as dedicated meshes for unfolding
-        #self.dedicatedPaperMeshes = [upper,lower]
 
     def unfoldTest(self, name = "upper"):
         '''
