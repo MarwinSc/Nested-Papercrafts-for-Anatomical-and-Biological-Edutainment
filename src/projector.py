@@ -325,6 +325,81 @@ def cropRenderedTriangle(image, pointsImage, resolution, count = 1):
 
     return result, pointsResult
 
+def render_triangle_obj(reader, renderer, color=None):
+    if color is None:
+        color = [0.1, 0.1, 0.1]
+
+    model_mapper = vtk.vtkPolyDataMapper()
+    model_mapper.SetInputConnection(reader.GetOutputPort())
+    model_mapper.SetColorModeToDefault()
+    model_actor = vtk.vtkActor()
+    model_actor.SetMapper(model_mapper)
+
+    model_actor.GetProperty().SetColor(color)
+    model_actor.GetProperty().SetLineWidth(2)
+    model_actor.GetProperty().SetAmbient(0.4)
+    model_actor.GetProperty().EdgeVisibilityOn()
+    renderer.AddActor(model_actor)
+
+def load_from_obj(path):
+    reader = vtk.vtkOBJReader()
+    reader.SetFileName(path)
+    reader.Update()
+    return reader
+
+def label_gt(reader, renderer, scale=0.1, color=None):
+    if color is None:
+        color = [255, 0, 0]
+    polydata = reader.GetOutput()
+    points = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData()).astype(float)
+    indices = np.unique(points, axis=0, return_index=True)[1]
+    points = [points[index] for index in sorted(indices)]
+
+    id = 1
+    for i in range(0, len(points), 4):
+        label = vtk.vtkVectorText()
+        label.SetText(str(id))
+        id += 1
+        pos = (points[i] + points[i + 1] + points[i + 2] + points[i + 3]) / 4
+        lblMapper = vtk.vtkPolyDataMapper()
+        lblMapper.SetInputConnection(label.GetOutputPort())
+
+        # Set up an actor for the node label
+        lblActor = vtk.vtkFollower()
+        lblActor.SetMapper(lblMapper)
+        lblActor.SetScale(scale, scale, scale)
+        lblActor.SetPosition(pos[0] - scale / 2,  pos[2] - scale / 2, 0.0)
+        lblActor.GetProperty().SetColor(color[0], color[1], color[2])
+        renderer.AddActor(lblActor)
+
+def renderFinalOutput(unfoldedModel, labels, mirroredLabels):
+    renderer = vtk.vtkRenderer()
+    renderer.SetBackground(vtk.vtkNamedColors().GetColor3d('White'))
+    window = vtk.vtkRenderWindow()
+    window.AddRenderer(renderer)
+    window.SetSize(720, 480)
+
+    i_renderer = vtk.vtkRenderWindowInteractor()
+    i_renderer.SetRenderWindow(window)
+    style = vtk.vtkInteractorStyleTrackballCamera()
+    i_renderer.SetInteractorStyle(style)
+
+    model_reader = load_from_obj(unfoldedModel)
+    render_triangle_obj(model_reader, renderer, color=[0.5, 0.5, 0.5])
+
+    gt_reader = load_from_obj(labels)
+    render_triangle_obj(gt_reader, renderer, color=[0.3, 0.3, 0.3])
+
+    mirror_gt_reader = load_from_obj(mirroredLabels)
+    render_triangle_obj(mirror_gt_reader, renderer, color=[0.1, 0.1, 0.1])
+
+    label_gt(gt_reader, renderer, 0.1, [250, 125, 0])
+    label_gt(mirror_gt_reader, renderer, 0.1, [125, 125, 125])
+
+    i_renderer.Initialize()
+    window.Render()
+    i_renderer.Start()
+
 def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, idx):
     '''
     Method that maps the created texture to an mesh which is created according to the unfolded uv layout,

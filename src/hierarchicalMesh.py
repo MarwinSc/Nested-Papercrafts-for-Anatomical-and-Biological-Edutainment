@@ -406,6 +406,9 @@ class HierarchicalMesh(object):
             outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
             util.meshioIO(filename, outpath)
             self.gluetab = util.readStl(outpath)
+            self.modelFile = os.path.join(self.dirname, "../out/3D/unfolded/model2D.obj")
+            self.gluetabFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
+            self.mirrorgtFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj")
 
     def unfoldPaperMeshPieces(self, iterations):
         '''
@@ -472,7 +475,9 @@ class HierarchicalMesh(object):
             projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
             if j < 0:
                 img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetab, idx)
+                projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile)
             else:
+                projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j])
                 img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetabs[j], idx)
             img = projector.mask(util.VtkToNp(img))
             # dy, dx, dz = img.shape
@@ -593,9 +598,12 @@ class HierarchicalMesh(object):
                             actor.GetProperty().SetOpacity(0.5)
                             self.unfoldedActors.append(actor)
                             unfoldedString += "Unfolded, "
+                            self.modelFiles.append(filename)
                         elif filename == "gluetabs_{}_piece_{}.obj".format(self.getChildIdx(),i):
                             mesh = util.readObj(os.path.join(directory, filename))
                             self.gluetabs.append(mesh)
+                            self.gluetabFiles.append(filename)
+                            self.mirrorgtFiles.append(os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj"))
 
                 else:
                     if filename == "unfolded_{}.obj".format(self.getChildIdx()):
@@ -606,10 +614,13 @@ class HierarchicalMesh(object):
                         actor.SetMapper(mapper)
                         actor.GetProperty().SetOpacity(0.5)
                         self.unfoldedActor = actor
+                        self.modelFile = filename
                         unfoldedString = "Unfolded"
                     elif filename == "gluetabs_{}.obj".format(self.getChildIdx()):
                         mesh = util.readObj(os.path.join(directory, filename))
                         self.gluetab = mesh
+                        self.gluetabFile = filename
+                        self.mirrorgtFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj")
 
 
             self.label.setText(unfoldedString)
