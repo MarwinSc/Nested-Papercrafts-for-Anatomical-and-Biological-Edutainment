@@ -368,7 +368,7 @@ def label_gt(reader, renderer, scale=0.1, color=None):
         lblActor = vtk.vtkFollower()
         lblActor.SetMapper(lblMapper)
         lblActor.SetScale(scale, scale, scale)
-        lblActor.SetPosition(pos[0] - scale / 2,  pos[2] - scale / 2, 0.0)
+        lblActor.SetPosition(pos[0] - scale / 2,  pos[1] - scale / 2, 0.0)
         lblActor.GetProperty().SetColor(color[0], color[1], color[2])
         renderer.AddActor(lblActor)
 
@@ -393,8 +393,8 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels):
     mirror_gt_reader = load_from_obj(mirroredLabels)
     render_triangle_obj(mirror_gt_reader, renderer, color=[0.1, 0.1, 0.1])
 
-    label_gt(gt_reader, renderer, 0.1, [250, 125, 0])
-    label_gt(mirror_gt_reader, renderer, 0.1, [125, 125, 125])
+    label_gt(gt_reader, renderer, 1, [250, 125, 0])
+    label_gt(mirror_gt_reader, renderer, 1, [125, 125, 125])
 
     i_renderer.Initialize()
     window.Render()
