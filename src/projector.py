@@ -325,7 +325,7 @@ def cropRenderedTriangle(image, pointsImage, resolution, count = 1):
 
     return result, pointsResult
 
-def render_triangle_obj(reader, renderer, color=None):
+def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None):
     if color is None:
         color = [0.1, 0.1, 0.1]
 
@@ -335,10 +335,22 @@ def render_triangle_obj(reader, renderer, color=None):
     model_actor = vtk.vtkActor()
     model_actor.SetMapper(model_mapper)
 
-    model_actor.GetProperty().SetColor(color)
-    model_actor.GetProperty().SetLineWidth(2)
-    model_actor.GetProperty().SetAmbient(0.4)
-    model_actor.GetProperty().EdgeVisibilityOn()
+    if texCoordinates is not None:
+        model_actor.GetProperty().SetColor(color)
+        model_actor.GetProperty().SetLineWidth(2)
+        model_actor.GetProperty().SetAmbient(0.4)
+        model_actor.GetProperty().EdgeVisibilityOn()
+    else:
+        filename = os.path.join(dirname, "../out/2D/texture/texture{}.png".format(idx))
+        readerFac = vtk.vtkImageReader2Factory()
+        imageReader = readerFac.CreateImageReader2(filename)
+        imageReader.SetFileName(filename)
+
+        texture = vtk.vtkTexture()
+        texture.SetInputConnection(imageReader.GetOutputPort())
+        model_actor.GetMapper().GetInput().GetPointData().SetTCoords(texCoordinates)
+        model_actor.SetTexture(texture)
+
     renderer.AddActor(model_actor)
 
 def load_from_obj(path):
@@ -372,7 +384,7 @@ def label_gt(reader, renderer, scale=0.1, color=None):
         lblActor.GetProperty().SetColor(color[0], color[1], color[2])
         renderer.AddActor(lblActor)
 
-def renderFinalOutput(unfoldedModel, labels, mirroredLabels):
+def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates):
     renderer = vtk.vtkRenderer()
     renderer.SetBackground(vtk.vtkNamedColors().GetColor3d('White'))
     window = vtk.vtkRenderWindow()
@@ -385,7 +397,7 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels):
     i_renderer.SetInteractorStyle(style)
 
     model_reader = load_from_obj(unfoldedModel)
-    render_triangle_obj(model_reader, renderer, color=[0.5, 0.5, 0.5])
+    render_triangle_obj(model_reader, renderer, idx=idx, texCoordinates=textureCoordinates)
 
     gt_reader = load_from_obj(labels)
     render_triangle_obj(gt_reader, renderer, color=[0.3, 0.3, 0.3])
