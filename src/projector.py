@@ -336,6 +336,7 @@ def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None
     model_actor.GetProperty().SetLineWidth(2)
     model_actor.GetProperty().EdgeVisibilityOn()
     model_actor.GetProperty().SetAmbient(1.0)
+    model_actor.GetProperty().LightingOff()
 
     if texCoordinates is None:
         model_actor.GetProperty().SetColor(color[0], color[1], color[2])
@@ -381,6 +382,7 @@ def label_gt(reader, renderer, scale=0.1, color=None):
         lblActor.SetScale(scale, scale, scale)
         lblActor.SetPosition(pos[0] - scale / 2,  pos[1] - scale / 2, 0.0)
         lblActor.GetProperty().SetColor(color[0], color[1], color[2])
+        lblActor.GetProperty().LightingOff()
         renderer.AddActor(lblActor)
 
 def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates):
@@ -405,8 +407,8 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     mirror_gt_reader = load_from_obj(mirroredLabels)
     render_triangle_obj(mirror_gt_reader, renderer, color=[50, 50, 50])
 
-    label_gt(gt_reader, renderer, 1, [250, 125, 0])
-    label_gt(mirror_gt_reader, renderer, 1, [125, 125, 125])
+    label_gt(gt_reader, renderer, 4, [255, 0, 0])
+    label_gt(mirror_gt_reader, renderer, 4, [255, 0, 0])
 
     window.Render()
     i_renderer.Start()
