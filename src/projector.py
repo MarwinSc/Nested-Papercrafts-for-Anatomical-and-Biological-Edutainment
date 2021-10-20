@@ -331,21 +331,20 @@ def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None
 
     model_mapper = vtk.vtkPolyDataMapper()
     model_mapper.SetInputConnection(reader.GetOutputPort())
-    model_mapper.SetColorModeToDefault()
     model_actor = vtk.vtkActor()
     model_actor.SetMapper(model_mapper)
+    model_actor.GetProperty().SetLineWidth(2)
+    model_actor.GetProperty().EdgeVisibilityOn()
+    model_actor.GetProperty().SetAmbient(1.0)
 
-    if texCoordinates is not None:
-        model_actor.GetProperty().SetColor(color)
-        model_actor.GetProperty().SetLineWidth(2)
-        model_actor.GetProperty().SetAmbient(0.4)
-        model_actor.GetProperty().EdgeVisibilityOn()
+    if texCoordinates is None:
+        model_actor.GetProperty().SetColor(color[0], color[1], color[2])
     else:
         filename = os.path.join(dirname, "../out/2D/texture/texture{}.png".format(idx))
         readerFac = vtk.vtkImageReader2Factory()
         imageReader = readerFac.CreateImageReader2(filename)
         imageReader.SetFileName(filename)
-
+        print("using texture,", filename)
         texture = vtk.vtkTexture()
         texture.SetInputConnection(imageReader.GetOutputPort())
         model_actor.GetMapper().GetInput().GetPointData().SetTCoords(texCoordinates)
@@ -395,20 +394,20 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     i_renderer.SetRenderWindow(window)
     style = vtk.vtkInteractorStyleTrackballCamera()
     i_renderer.SetInteractorStyle(style)
+    i_renderer.Initialize()
 
     model_reader = load_from_obj(unfoldedModel)
     render_triangle_obj(model_reader, renderer, idx=idx, texCoordinates=textureCoordinates)
 
     gt_reader = load_from_obj(labels)
-    render_triangle_obj(gt_reader, renderer, color=[0.3, 0.3, 0.3])
+    render_triangle_obj(gt_reader, renderer, color=[50, 50, 50])
 
     mirror_gt_reader = load_from_obj(mirroredLabels)
-    render_triangle_obj(mirror_gt_reader, renderer, color=[0.1, 0.1, 0.1])
+    render_triangle_obj(mirror_gt_reader, renderer, color=[50, 50, 50])
 
     label_gt(gt_reader, renderer, 1, [250, 125, 0])
     label_gt(mirror_gt_reader, renderer, 1, [125, 125, 125])
 
-    i_renderer.Initialize()
     window.Render()
     i_renderer.Start()
 
