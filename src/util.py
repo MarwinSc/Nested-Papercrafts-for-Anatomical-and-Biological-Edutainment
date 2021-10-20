@@ -3,6 +3,7 @@ import numpy as np
 import os
 import trimesh
 import meshio
+import math
 from vtkmodules.numpy_interface.dataset_adapter import numpy_support
 
 def getbufferRenIntWin(camera = vtk.vtkCamera(),width=2000,height=2000):
@@ -257,21 +258,156 @@ def projectMeshToBoundsAlongCubeNormals(mesh):
     cellLocator.SetDataSet(hull.GetOutput())
     cellLocator.BuildLocator()
 
-    for i in range(centersFilter.GetOutput().GetNumberOfPoints()):
-        p = [0.0, 0.0, 0.0]
-        centersFilter.GetOutput().GetPoint(i, p)
+    # clean mesh to get right vertexnormals and create lookup between cleaned and uncleaned mesh.
+    # vertex normals so the triangles don't split open
+    cleanedMesh = cleanMesh(mesh)
+    vertexdic = {}
+    for i in range(mesh.GetNumberOfPoints()):
+        for j in range(cleanedMesh.GetNumberOfPoints()):
+            if mesh.GetPoints().GetPoint(i) == cleanedMesh.GetPoints().GetPoint(j):
+                vertexdic[i] = j
+
+    normalsFilter = vtk.vtkPolyDataNormals()
+    normalsFilter.SetInputData(cleanedMesh)
+    normalsFilter.ComputePointNormalsOn()
+    normalsFilter.Update()
+    normals = normalsFilter.GetOutput().GetPointData().GetNormals()
+    normals_as_numpy = numpy_support.vtk_to_numpy(normals)
+
+    cubeNormals = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (-1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)]
+
+    for i in range(mesh.GetNumberOfCells()):
+        points = mesh.GetCell(i).GetPoints()
         triCell = vtk.vtkTriangle()
 
-        '''
+        newCellPoints = []
+        newCellPointIds = []
 
-        #for each point
+        cubeNormalVertexIsProjectedWith = []
+
+        # for each point
+        for j in range(3):
+            point = list(points.GetPoint(j))
+            pointID = mesh.GetCell(i).GetPointId(j)
+            normal = normals.GetTuple(vertexdic[pointID])
+
+            largestSkalarp = -1000
+            indexLargestSkalarP = -1000
+            for k,n in enumerate(cubeNormals):
+                skalarp = (normal[0] * n[0]) + (normal[1] * n[1]) + (normal[2] * n[2])
+                if skalarp > largestSkalarp:
+                    largestSkalarp = skalarp
+                    indexLargestSkalarP = k
+            if largestSkalarp == -1000:
+                print("Error no cubenormal found.")
+                continue
+            cubeNormalVertexIsProjectedWith.append(indexLargestSkalarP)
+
+            p2 = [point[0] + (cubeNormals[indexLargestSkalarP][0] * 100.0), point[1] + (cubeNormals[indexLargestSkalarP][1] * 100.0),
+                  point[2] + (cubeNormals[indexLargestSkalarP][2] * 100.0)]
+
+            tolerance = 0.1
+
+            t = vtk.mutable(0)
+            x = [0.0, 0.0, 0.0]
+            pcoords = [0.0, 0.0, 0.0]
+            subId = vtk.mutable(0)
+            cellLocator.IntersectWithLine(point, p2, tolerance, t, x, pcoords, subId)
+
+            newCellPoints.append(x)
+
+            pointId = newPoints.InsertNextPoint(tuple(x))
+            newCellPointIds.append(pointId)
+            triCell.GetPointIds().SetId(j, pointId)
+
+        cellOnCubeFace = False
+        for j in range(3):
+            if newCellPoints[0][j] == newCellPoints[1][j] and newCellPoints[0][j] == newCellPoints[2][j] and newCellPoints[1][j] == newCellPoints[2][j]:
+                cellOnCubeFace = True
+
+        if not cellOnCubeFace:
+            tempPoints = []
+            for j,pointId in enumerate(newCellPointIds):
+                point = newPoints.GetPoint(pointId)
+                tempPoints.append(point)
+
+            tempNormal = [0.0,0.0,0.0]
+            vtk.vtkTriangle().ComputeNormal(tempPoints[0],tempPoints[1],tempPoints[2],tempNormal)
+
+            largestSkalarp = -1000
+            indexLargestSkalarP = -1000
+            for j,n in enumerate(cubeNormals):
+                skalarp = (tempNormal[0] * n[0]) + (tempNormal[1] * n[1]) + (tempNormal[2] * n[2])
+                if skalarp > largestSkalarp:
+                    largestSkalarp = skalarp
+                    indexLargestSkalarP = j
+            if largestSkalarp == -1000:
+                print("Error no cubenormal found.")
+                continue
+
+            for j in range(3):
+
+                p2 = [tempPoints[j][0] + (cubeNormals[indexLargestSkalarP][0] * 100.0),
+                      tempPoints[j][1] + (cubeNormals[indexLargestSkalarP][1] * 100.0),
+                      tempPoints[j][2] + (cubeNormals[indexLargestSkalarP][2] * 100.0)]
+
+                tolerance = 0.1
+
+                t = vtk.mutable(0)
+                x = [0.0, 0.0, 0.0]
+                pcoords = [0.0, 0.0, 0.0]
+                subId = vtk.mutable(0)
+                cellLocator.IntersectWithLine(tempPoints[j], p2, tolerance, t, x, pcoords, subId)
+
+                newPoints.SetPoint(newCellPointIds[j],tuple(x))
+
+        newCells.InsertNextCell(triCell)
+
+    newGeometry.SetPoints(newPoints)
+    newGeometry.SetPolys(newCells)
+
+    return newGeometry
+
+
+def projectMeshFromOriginToCubeBounds(mesh):
+
+    bounds = mesh.GetBounds()
+    width = bounds[1] - bounds[0]
+    depth = bounds[3] - bounds[2]
+    height = bounds[5] - bounds[4]
+
+    newGeometry = vtk.vtkPolyData()
+    newPoints = vtk.vtkPoints()
+    newCells = vtk.vtkCellArray()
+
+    hull = vtk.vtkHull()
+    hull.SetInputData(mesh)
+    hull.AddCubeFacePlanes()
+    hull.Update()
+
+    writeStl(hull.GetOutput(),"cube")
+
+    centerOfMass = vtk.vtkCenterOfMass()
+    centerOfMass.SetInputData(mesh)
+    centerOfMass.Update()
+    center = centerOfMass.GetCenter()
+
+    cellLocator = vtk.vtkCellLocator()
+    cellLocator.SetDataSet(hull.GetOutput())
+    cellLocator.BuildLocator()
+
+    for i in range(mesh.GetNumberOfCells()):
+        points = mesh.GetCell(i).GetPoints()
+        triCell = vtk.vtkTriangle()
+
+        # for each point
         for j in range(3):
 
-            absCoords = [abs(coord) for coord in points.GetPoint(j)]
-            indexOfHighest = absCoords.index(max(absCoords))
-
             p1 = list(points.GetPoint(j))
-            p2 = [p1[0] + (normals.GetTuple(i)[0] * 100.0), p1[1] + (normals.GetTuple(i)[1] * 100.0), p1[2] + (normals.GetTuple(i)[2] * 100.0)]
+
+            direction = (p1[0] - center[0], p1[1] - center[1], p1[2] - center[2])
+
+            p2 = [p1[0] + (direction[0] * 100.0), p1[1] + (direction[1] * 100.0), p1[2] + (direction[2] * 100.0)]
 
             tolerance = 0.1
 
@@ -281,13 +417,51 @@ def projectMeshToBoundsAlongCubeNormals(mesh):
             subId = vtk.mutable(0)
             cellLocator.IntersectWithLine(p1, p2, tolerance, t, x, pcoords, subId)
 
+
             pointId = newPoints.InsertNextPoint(tuple(x))
             triCell.GetPointIds().SetId(j, pointId)
-        '''
+
         newCells.InsertNextCell(triCell)
 
-        newGeometry.SetPoints(newPoints)
-        newGeometry.SetPolys(newCells)
+    newGeometry.SetPoints(newPoints)
+    newGeometry.SetPolys(newCells)
+
+    newGeometry = smoothMesh(newGeometry, hull.GetOutput())
+
+    # ------ move vertices to the corner of the bounding cube
+
+    distances = []
+    for i in range(newGeometry.GetPoints().GetNumberOfPoints()):
+        point = newGeometry.GetPoints().GetPoint(i)
+        distToCorner = [0,0,0,0,0,0,0,0]
+        hullPoints = cleanMesh(hull.GetOutput()).GetPoints()
+        numberOf_hullPoints = hullPoints.GetNumberOfPoints()
+        for j in range(numberOf_hullPoints):
+            cornerVert = hullPoints.GetPoint(j)
+            euclidDist = math.sqrt(math.pow(point[0]-cornerVert[0],2) + math.pow(point[1]-cornerVert[1],2) + math.pow(point[2]-cornerVert[2],2))
+            distToCorner[j] = euclidDist
+
+        distances.append(distToCorner)
+
+    # pick the closest 8 vertices
+    distances = np.array(distances)
+    min_values = np.amin(distances, axis = 0)
+    corner_indices = []
+    for i in range(8):
+        indices = np.where(distances[:, i] == min_values[i])[0].tolist()
+        corner_indices.append(indices)
+
+    for i in range(len(corner_indices)):
+        for j in range(len(corner_indices[i])):
+            index = corner_indices[i][j]
+            p = hullPoints.GetPoint(i)
+            newPoints.SetPoint(index, p)
+
+    newGeometry.SetPoints(newPoints)
+
+
+    return newGeometry
+
 
 def projectMeshToBounds(mesh):
 
@@ -322,15 +496,14 @@ def projectMeshToBounds(mesh):
     cellLocator.SetDataSet(hull.GetOutput())
     cellLocator.BuildLocator()
 
+    mesh = cleanMesh(mesh)
+
     for i in range(mesh.GetNumberOfCells()):
         points = mesh.GetCell(i).GetPoints()
         triCell = vtk.vtkTriangle()
 
         #for each point
         for j in range(3):
-
-            absCoords = [abs(coord) for coord in points.GetPoint(j)]
-            indexOfHighest = absCoords.index(max(absCoords))
 
             p1 = list(points.GetPoint(j))
             p2 = [p1[0] + (normals.GetTuple(i)[0] * 100.0), p1[1] + (normals.GetTuple(i)[1] * 100.0), p1[2] + (normals.GetTuple(i)[2] * 100.0)]

@@ -466,7 +466,6 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     camera.SetFocalPoint(center)
     camera.SetViewUp(0, 0, 1)
     camera.ParallelProjectionOn()
-    #0.6 seems a good factor for the bounds as camera zoom
     camera.SetParallelScale(scale)
     ren, iren, renWin, wti = util.getbufferRenIntWin(camera, width=6000, height=6000)
     renWin.SetOffScreenRendering(1)
