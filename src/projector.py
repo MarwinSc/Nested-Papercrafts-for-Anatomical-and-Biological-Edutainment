@@ -428,6 +428,7 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     renWin.Render()
     wti.Update()
     filename = os.path.join(dirname, "../out/2D/back_output{}.png".format(idx))
+    img = wti.GetOutput() # maybe flip this depending on the printer
     util.writeImage(wti.GetOutput(), filename)
 
 def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, idx):
