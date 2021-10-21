@@ -325,7 +325,9 @@ def cropRenderedTriangle(image, pointsImage, resolution, count = 1):
 
     return result, pointsResult
 
-def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None):
+def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None, rotation=None):
+    if rotation is None:
+        rotation = [0.0, 0.0, 0.0, 0.0]
     if color is None:
         color = [0.1, 0.1, 0.1]
 
@@ -333,9 +335,8 @@ def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None
     model_mapper.SetInputConnection(reader.GetOutputPort())
     model_actor = vtk.vtkActor()
     model_actor.SetMapper(model_mapper)
-    model_actor.GetProperty().SetLineWidth(2)
+    model_actor.GetProperty().SetLineWidth(1)
     model_actor.GetProperty().EdgeVisibilityOn()
-    model_actor.GetProperty().SetAmbient(1.0)
     model_actor.GetProperty().LightingOff()
 
     if texCoordinates is None:
@@ -350,6 +351,7 @@ def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None
         texture.SetInputConnection(imageReader.GetOutputPort())
         model_actor.GetMapper().GetInput().GetPointData().SetTCoords(texCoordinates)
         model_actor.SetTexture(texture)
+        model_actor.RotateWXYZ(rotation[0], rotation[1], rotation[2], rotation[3])
 
     renderer.AddActor(model_actor)
 
@@ -386,32 +388,47 @@ def label_gt(reader, renderer, scale=0.1, color=None):
         renderer.AddActor(lblActor)
 
 def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates):
-    renderer = vtk.vtkRenderer()
-    renderer.SetBackground(vtk.vtkNamedColors().GetColor3d('White'))
-    window = vtk.vtkRenderWindow()
-    window.AddRenderer(renderer)
-    window.SetSize(720, 480)
+    ren = vtk.vtkRenderer()
+    ren.SetBackground(255.0, 255.0, 255.0)
+    renWin = vtk.vtkRenderWindow()
+    renWin.SetSize(2000, 2000)
+    renWin.AddRenderer(ren)
+    wti = vtk.vtkWindowToImageFilter()
+    wti.SetInput(renWin)
+    wti.SetInputBufferTypeToRGB()
+    wti.ReadFrontBufferOff()
 
-    i_renderer = vtk.vtkRenderWindowInteractor()
-    i_renderer.SetRenderWindow(window)
-    style = vtk.vtkInteractorStyleTrackballCamera()
-    i_renderer.SetInteractorStyle(style)
-    i_renderer.Initialize()
+    renWin.SetOffScreenRendering(1)
 
     model_reader = load_from_obj(unfoldedModel)
-    render_triangle_obj(model_reader, renderer, idx=idx, texCoordinates=textureCoordinates)
+    render_triangle_obj(model_reader, ren, idx=idx, texCoordinates=textureCoordinates)
 
     gt_reader = load_from_obj(labels)
-    render_triangle_obj(gt_reader, renderer, color=[50, 50, 50])
+    render_triangle_obj(gt_reader, ren, color=[50, 50, 50])
+    label_gt(gt_reader, ren, 2, [255, 0, 0])
+
+    renWin.Render()
+    wti.Update()
+
+    filename = os.path.join(dirname, "../out/2D/front_output{}.png".format(idx))
+    util.writeImage(wti.GetOutput(), filename)
+
+    ren.RemoveAllViewProps()
+    renWin.Render()
+
+    wti = vtk.vtkWindowToImageFilter()
+    wti.SetInput(renWin)
+    wti.SetInputBufferTypeToRGB()
+    wti.ReadFrontBufferOff()
 
     mirror_gt_reader = load_from_obj(mirroredLabels)
-    render_triangle_obj(mirror_gt_reader, renderer, color=[50, 50, 50])
+    render_triangle_obj(mirror_gt_reader, ren, color=[50, 50, 50])
+    label_gt(mirror_gt_reader, ren, 2, [255, 0, 0])
 
-    label_gt(gt_reader, renderer, 4, [255, 0, 0])
-    label_gt(mirror_gt_reader, renderer, 4, [255, 0, 0])
-
-    window.Render()
-    i_renderer.Start()
+    renWin.Render()
+    wti.Update()
+    filename = os.path.join(dirname, "../out/2D/back_output{}.png".format(idx))
+    util.writeImage(wti.GetOutput(), filename)
 
 def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, idx):
     '''
