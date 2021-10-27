@@ -5,6 +5,7 @@ import os
 import util
 
 dirname = os.path.dirname(__file__)
+uniqueid = 0
 
 def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [500,500]):
     '''
@@ -387,7 +388,9 @@ def label_gt(reader, renderer, scale=0.1, color=None):
         lblActor.GetProperty().LightingOff()
         renderer.AddActor(lblActor)
 
+
 def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates):
+    global uniqueid
     ren = vtk.vtkRenderer()
     ren.SetBackground(255.0, 255.0, 255.0)
     renWin = vtk.vtkRenderWindow()
@@ -410,7 +413,7 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     renWin.Render()
     wti.Update()
 
-    filename = os.path.join(dirname, "../out/2D/front_output{}.png".format(idx))
+    filename = os.path.join(dirname, "../out/2D/front_output{}.png".format(uniqueid))
     util.writeImage(wti.GetOutput(), filename)
 
     ren.RemoveAllViewProps()
@@ -427,9 +430,11 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
 
     renWin.Render()
     wti.Update()
-    filename = os.path.join(dirname, "../out/2D/back_output{}.png".format(idx))
+    filename = os.path.join(dirname, "../out/2D/back_output{}.png".format(uniqueid))
     img = wti.GetOutput() # maybe flip this depending on the printer
     util.writeImage(wti.GetOutput(), filename)
+    uniqueid += 1
+
 
 def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, idx):
     '''
@@ -517,7 +522,7 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     pointActor = vtk.vtkActor()
     pointActor.SetMapper(mapper)
     pointActor.GetProperty().SetPointSize(1)
-    pointActor.GetProperty().SetColor([255.0,0.0,0.0])
+    pointActor.GetProperty().SetColor([255.0, 0.0, 0.0])
 
     # Labels----------------
 
