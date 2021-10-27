@@ -391,7 +391,8 @@ class HierarchicalMesh(object):
         # idx = "{}_{}".format(self.getLevel(), self.getChildIdx())
         # self.writePapermeshStlAndOff(idx)
         self.graph = Graph()
-        unfoldedActor = self.meshProcessor.mu3dUnfoldPaperMesh(self.papermesh, self.graph, iterations)
+
+        unfoldedActor = self.meshProcessor.mu3dUnfoldPaperMesh(self.getChildIdx(), self.papermesh, self.graph, iterations)
         if unfoldedActor:
             self.label.setText("Unfolded")
             self.unfoldedActor = unfoldedActor
@@ -402,9 +403,9 @@ class HierarchicalMesh(object):
             outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
             util.meshioIO(filename, outpath)
             self.gluetab = util.readStl(outpath)
-            self.modelFile = os.path.join(self.dirname, "../out/3D/unfolded/model2D.obj")
-            self.gluetabFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
-            self.mirrorgtFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj")
+            self.modelFile = os.path.join(self.dirname, "../out/3D/unfolded/model{}.obj".format(self.getChildIdx()))
+            self.gluetabFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs{}.obj".format(self.getChildIdx()))
+            self.mirrorgtFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored{}.obj".format(self.getChildIdx()))
 
     def unfoldPaperMeshPieces(self, iterations):
         '''
@@ -419,7 +420,7 @@ class HierarchicalMesh(object):
             # idx = "{}_{}_Piece{}".format(self.getLevel(), self.getChildIdx(), i)
             # self.writePapermeshStlAndOff(idx)
             self.graph = Graph()
-            unfoldedActor = self.meshProcessor.mu3dUnfoldPaperMesh(piece.GetMapper().GetInput(), self.graph, iterations)
+            unfoldedActor = self.meshProcessor.mu3dUnfoldPaperMesh(self.getChildIdx() + "_" + str(i), piece.GetMapper().GetInput(), self.graph, iterations)
             if unfoldedActor:
                 unfoldedString += "Unfolded, "
                 self.unfoldedActors.append(unfoldedActor)
@@ -430,6 +431,11 @@ class HierarchicalMesh(object):
                 outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
                 util.meshioIO(filename, outpath)
                 self.gluetabs.append(util.readStl(outpath))
+                self.modelFiles = os.path.join(self.dirname, "../out/3D/unfolded/model{}.obj".format(self.getChildIdx() + "_" + str(i)))
+                self.gluetabFiles = os.path.join(self.dirname,
+                                                "../out/3D/unfolded/gluetabs{}.obj".format(self.getChildIdx() + "_" + str(i)))
+                self.mirrorgtFiles = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored{}.obj".format(
+                    self.getChildIdx() + "_" + str(i)))
 
             else:
                 unfoldedString += "Not Unfolded, "
@@ -457,6 +463,7 @@ class HierarchicalMesh(object):
                 self.updateUiButtons(self.unfoldedActor)
                 print("Projected a hierarchy level.")
 
+        self.getChildIdx()
         for child in self.children:
             child.project(resolution, textureIdx)
 
@@ -471,12 +478,8 @@ class HierarchicalMesh(object):
             projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
             if j < 0:
                 img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetab, idx)
-                projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile, idx,
-                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
             else:
                 img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetabs[j], idx)
-                projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j], idx,
-                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
             img = projector.mask(util.VtkToNp(img))
             # dy, dx, dz = img.shape
             # img = util.NpToVtk(img, dx, dy, dz)
@@ -492,6 +495,15 @@ class HierarchicalMesh(object):
                 previousImage = self.multiplyProjections(img, None, textureIdx)
 
             filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(textureIdx))
+            print(filename)
+
+            if j < 0:
+                projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile, textureIdx,
+                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
+            else:
+                projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j], textureIdx,
+                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
+
             dy, dx, dz = previousImage.shape
             util.writeImage(util.NpToVtk(previousImage, dx, dy, dz), filename)
             idx += 1
