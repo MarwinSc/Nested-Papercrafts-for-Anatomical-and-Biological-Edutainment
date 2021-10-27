@@ -18,7 +18,7 @@ class MeshProcessing():
 
     #meshInteractor = meshInteraction.MeshInteraction(dedicatedPaperMeshes)
 
-    def mu3dUnfoldPaperMesh(self, mesh, graph, iterations):
+    def mu3dUnfoldPaperMesh(self, id, mesh, graph, iterations):
         '''
         Forwards the mesh to the mu3d wrapper to unfold it.
         :param actor: The vtk actor containing the mesh to unfold.
@@ -46,9 +46,9 @@ class MeshProcessing():
 
             graph.save(filename, gluetabs_filename)
 
-            filename = os.path.join(self.dirname, "../out/3D/unfolded/model2D.obj")
-            gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.obj")
-            gluetabs_mirrored_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj")
+            filename = os.path.join(self.dirname, "../out/3D/unfolded/model{}.obj".format(id))
+            gluetabs_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs{}.obj".format(id))
+            gluetabs_mirrored_filename = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored{}.obj".format(id))
 
             graph.save_all(filename, gluetabs_filename,gluetabs_mirrored_filename)
 

@@ -5,6 +5,7 @@ import os
 import util
 
 dirname = os.path.dirname(__file__)
+uniqueid = 0
 
 def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [500,500]):
     '''
@@ -325,6 +326,116 @@ def cropRenderedTriangle(image, pointsImage, resolution, count = 1):
 
     return result, pointsResult
 
+def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None, rotation=None):
+    if rotation is None:
+        rotation = [0.0, 0.0, 0.0, 0.0]
+    if color is None:
+        color = [0.1, 0.1, 0.1]
+
+    model_mapper = vtk.vtkPolyDataMapper()
+    model_mapper.SetInputConnection(reader.GetOutputPort())
+    model_actor = vtk.vtkActor()
+    model_actor.SetMapper(model_mapper)
+    model_actor.GetProperty().SetLineWidth(1)
+    model_actor.GetProperty().EdgeVisibilityOn()
+    model_actor.GetProperty().LightingOff()
+
+    if texCoordinates is None:
+        model_actor.GetProperty().SetColor(color[0], color[1], color[2])
+    else:
+        filename = os.path.join(dirname, "../out/2D/texture/texture{}.png".format(idx))
+        readerFac = vtk.vtkImageReader2Factory()
+        imageReader = readerFac.CreateImageReader2(filename)
+        imageReader.SetFileName(filename)
+        print("using texture,", filename)
+        texture = vtk.vtkTexture()
+        texture.SetInputConnection(imageReader.GetOutputPort())
+        model_actor.GetMapper().GetInput().GetPointData().SetTCoords(texCoordinates)
+        model_actor.SetTexture(texture)
+        model_actor.RotateWXYZ(rotation[0], rotation[1], rotation[2], rotation[3])
+
+    renderer.AddActor(model_actor)
+
+def load_from_obj(path):
+    reader = vtk.vtkOBJReader()
+    reader.SetFileName(path)
+    reader.Update()
+    return reader
+
+def label_gt(reader, renderer, scale=0.1, color=None):
+    if color is None:
+        color = [255, 0, 0]
+    polydata = reader.GetOutput()
+    points = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData()).astype(float)
+    indices = np.unique(points, axis=0, return_index=True)[1]
+    points = [points[index] for index in sorted(indices)]
+
+    id = 1
+    for i in range(0, len(points), 4):
+        label = vtk.vtkVectorText()
+        label.SetText(str(id))
+        id += 1
+        pos = (points[i] + points[i + 1] + points[i + 2] + points[i + 3]) / 4
+        lblMapper = vtk.vtkPolyDataMapper()
+        lblMapper.SetInputConnection(label.GetOutputPort())
+
+        # Set up an actor for the node label
+        lblActor = vtk.vtkFollower()
+        lblActor.SetMapper(lblMapper)
+        lblActor.SetScale(scale, scale, scale)
+        lblActor.SetPosition(pos[0] - scale / 2,  pos[1] - scale / 2, 0.0)
+        lblActor.GetProperty().SetColor(color[0], color[1], color[2])
+        lblActor.GetProperty().LightingOff()
+        renderer.AddActor(lblActor)
+
+
+def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates):
+    global uniqueid
+    ren = vtk.vtkRenderer()
+    ren.SetBackground(255.0, 255.0, 255.0)
+    renWin = vtk.vtkRenderWindow()
+    renWin.SetSize(2000, 2000)
+    renWin.AddRenderer(ren)
+    wti = vtk.vtkWindowToImageFilter()
+    wti.SetInput(renWin)
+    wti.SetInputBufferTypeToRGB()
+    wti.ReadFrontBufferOff()
+
+    renWin.SetOffScreenRendering(1)
+
+    model_reader = load_from_obj(unfoldedModel)
+    render_triangle_obj(model_reader, ren, idx=idx, texCoordinates=textureCoordinates)
+
+    gt_reader = load_from_obj(labels)
+    render_triangle_obj(gt_reader, ren, color=[50, 50, 50])
+    label_gt(gt_reader, ren, 2, [255, 0, 0])
+
+    renWin.Render()
+    wti.Update()
+
+    filename = os.path.join(dirname, "../out/2D/front_output{}.png".format(uniqueid))
+    util.writeImage(wti.GetOutput(), filename)
+
+    ren.RemoveAllViewProps()
+    renWin.Render()
+
+    wti = vtk.vtkWindowToImageFilter()
+    wti.SetInput(renWin)
+    wti.SetInputBufferTypeToRGB()
+    wti.ReadFrontBufferOff()
+
+    mirror_gt_reader = load_from_obj(mirroredLabels)
+    render_triangle_obj(mirror_gt_reader, ren, color=[50, 50, 50])
+    label_gt(mirror_gt_reader, ren, 2, [255, 0, 0])
+
+    renWin.Render()
+    wti.Update()
+    filename = os.path.join(dirname, "../out/2D/back_output{}.png".format(uniqueid))
+    img = wti.GetOutput() # maybe flip this depending on the printer
+    util.writeImage(wti.GetOutput(), filename)
+    uniqueid += 1
+
+
 def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, idx):
     '''
     Method that maps the created texture to an mesh which is created according to the unfolded uv layout,
@@ -411,7 +522,7 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     pointActor = vtk.vtkActor()
     pointActor.SetMapper(mapper)
     pointActor.GetProperty().SetPointSize(1)
-    pointActor.GetProperty().SetColor([255.0,0.0,0.0])
+    pointActor.GetProperty().SetColor([255.0, 0.0, 0.0])
 
     # Labels----------------
 
