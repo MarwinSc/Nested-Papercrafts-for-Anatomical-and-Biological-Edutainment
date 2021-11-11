@@ -72,11 +72,12 @@ class MeshProcessing():
             return actor
 
 
-    def createDedicatedMesh(self,mesh,unfolded):
+    def createDedicatedMesh(self,mesh,unfolded,hull = None, map = None):
         '''
         Creates a dedicated paper mesh to project a given mesh onto it
         :param mesh: the anatomical structure
         :param unfolded: the unfolded papermesh for that structure
+        :param hull: is only for cubic projection
         :return:
         '''
         if mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Inflate:
@@ -85,7 +86,8 @@ class MeshProcessing():
 
         elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Cube:
             util.writeStl(unfolded.GetMapper().GetInput(),"beforeCubeDedicated")
-            poly = util.projectMeshToBoundsAlongCubeNormals(unfolded.GetMapper().GetInput())
+            if hull is not None: util.writeStl(hull,"cut_hull")
+            poly = util.projectMeshToBoundsAlongCubeNormals(unfolded.GetMapper().GetInput(), hull=hull, map = map)
             util.writeStl(poly,"cubeDedicatedMesh")
 
         elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Clipping:

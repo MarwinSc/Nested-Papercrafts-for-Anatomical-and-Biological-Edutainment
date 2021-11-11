@@ -14,21 +14,31 @@ from viewpointselection import entropy
 
 class ViewPointComputation(QtWidgets.QMainWindow):
 
-    def __init__(self, actor_list = None, parent=None):
-        QtWidgets.QMainWindow.__init__(self, parent)
+    def __init__(self, actor_list = None, parent=None, openWindow = False):
 
-        self.frame = QtWidgets.QFrame()
-        self.setWindowTitle("Entropy")
-        self.setGeometry(0, 0, 800, 500)
+        if openWindow:
+            QtWidgets.QMainWindow.__init__(self, parent)
 
-        self.vl = QtWidgets.QVBoxLayout()
-        self.vtkWidget = QVTKRenderWindowInteractor(self.frame)
-        self.vl.addWidget(self.vtkWidget)
+            self.frame = QtWidgets.QFrame()
+            self.setWindowTitle("Entropy")
+            self.setGeometry(0, 0, 800, 500)
 
-        self.ren = vtk.vtkRenderer()
-        self.vtkWidget.GetRenderWindow().AddRenderer(self.ren)
-        self.iren = self.vtkWidget.GetRenderWindow().GetInteractor()
-        self.renWin = self.vtkWidget.GetRenderWindow()
+            self.vl = QtWidgets.QVBoxLayout()
+            self.vtkWidget = QVTKRenderWindowInteractor(self.frame)
+            self.vl.addWidget(self.vtkWidget)
+
+            self.ren = vtk.vtkRenderer()
+            self.vtkWidget.GetRenderWindow().AddRenderer(self.ren)
+            self.iren = self.vtkWidget.GetRenderWindow().GetInteractor()
+            self.renWin = self.vtkWidget.GetRenderWindow()
+
+        else:
+            self.ren = vtk.vtkRenderer()
+            self.renWin = vtk.vtkRenderWindow()
+            self.renWin.AddRenderer(self.ren)
+            self.iren = vtk.vtkRenderWindowInteractor()
+            self.iren.SetRenderWindow(self.renWin)
+            self.renWin.SetOffScreenRendering(True)
 
         if actor_list is None:
             hierarchical_actor_list = self.surface_rendering(r"../viewpointselection/spheres")
@@ -42,10 +52,11 @@ class ViewPointComputation(QtWidgets.QMainWindow):
 
         self.ren.ResetCamera()
 
-        self.frame.setLayout(self.vl)
-        self.setCentralWidget(self.frame)
+        if openWindow:
+            self.frame.setLayout(self.vl)
+            self.setCentralWidget(self.frame)
+            self.show()
 
-        self.show()
         self.iren.Initialize()
 
         self.max_viewpoints_list, self.bds_list = self.init_hierarchical_entropy(hierarchical_actor_list)

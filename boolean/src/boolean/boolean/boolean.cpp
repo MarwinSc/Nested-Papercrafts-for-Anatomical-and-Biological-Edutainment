@@ -83,9 +83,8 @@ namespace ae{
 
 		K::Plane_3 cut_plane = K::Plane_3(K::Point_3(o_x, o_y, o_z), K::Vector_3(n_x, n_y, n_z));
 		//mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
-		//mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
-
-		mesh = boolean_interface::removeDegenFaces(mesh,0.2f,cut_plane);
+		mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
+		//mesh = boolean_interface::removeDegenFaces(mesh,0.2f,cut_plane);
 		mesh = boolean_interface::connectBoundaries(mesh, K::Vector_3(n_x, n_y, n_z));
 
 	}
@@ -427,6 +426,29 @@ namespace ae{
 					break;
 				}
 			} while (vbegin != done);
+		}
+		first_mesh.collect_garbage();
+
+		//remove triangles where two edges are on the boundary 
+		for (face_descriptor fd : first_mesh.faces()) {
+			halfedge_descriptor hd = first_mesh.halfedge(fd);
+			halfedge_descriptor current = hd;
+			bool isOnBoundary = false;
+			do {
+				if (first_mesh.null_face() == first_mesh.face(first_mesh.opposite(current)))
+				{
+					if (isOnBoundary) {
+						std::cout << "second boundary edge" << std::endl;
+						//first_mesh.remove_face(fd);
+						CGAL::Euler::remove_face(current, first_mesh);
+						break;
+					}
+					else {
+						isOnBoundary = true;
+					}
+				}
+				current = first_mesh.next(current);
+			} while (current != hd);
 		}
 
 		first_mesh.collect_garbage();

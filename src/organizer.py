@@ -87,7 +87,7 @@ class Organizer():
         self.ren.ResetCameraClippingRange()
         self.ren.ResetCamera()
 
-    def onMultiply(self,depthPeeling,filter,brighten):
+    def onMultiply(self,depthPeeling,filter,brighten,lowerT=33,upperT=60):
 
         imageActor = vtk.vtkImageActor()
 
@@ -98,7 +98,7 @@ class Organizer():
         self.resultRen.RemoveActor(imageActor)
         self.ren.SetViewport(self.noViewport)
         self.resultRen.SetViewport(self.fullViewport)
-        result = self.imageProcessor.multiplyingActors(depthPeeling,filter,brighten,self.hierarchical_mesh_anchor.getAllMeshes(),self.camera,self.height,self.width,self.occlusion,self.numberOfPeels)
+        result = self.imageProcessor.multiplyingActors(depthPeeling,filter,brighten,self.hierarchical_mesh_anchor.getAllMeshes(),self.camera,self.height,self.width,self.occlusion,self.numberOfPeels,lowerT/30.0,upperT/30.0)
 
         imageActor = vtk.vtkImageActor()
         imageActor.GetMapper().SetInputData(result)
@@ -243,15 +243,14 @@ class Organizer():
             mapper.SetInputData(plane.GetOutput())
             actor = vtk.vtkActor()
             actor.SetMapper(mapper)
-            actor.SetScale(50.0,50.0,50.0)
+            #actor.SetScale(50.0,50.0,50.0)
             actor.GetProperty().SetColor(1.0,0.0,0.0)
 
             self.ren.AddActor(actor)
 
-    def cutHM(self, viewpoints, bds):
+    def cutHM(self, viewpoints, bds, convexHull_cutout = False):
         self.hierarchical_mesh_anchor.addCutPlanes(viewpoints, bds)
-        #self.hierarchical_mesh_anchor.cut()
-        self.hierarchical_mesh_anchor.recursive_difference()
+        self.hierarchical_mesh_anchor.recursive_difference(convexHull_cutout)
 
     def writeUnfolded(self):
         self.hierarchical_mesh_anchor.writeAllUnfoldedMeshesInHierarchy()

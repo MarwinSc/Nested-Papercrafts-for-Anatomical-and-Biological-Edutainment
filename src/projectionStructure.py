@@ -12,7 +12,7 @@ class ProjectionStructure(object):
     color = [0.0,0.0,0.0]
     opacity = 1.0
     projectionActor = None
-    projectionMethod = ProjectionMethod.Inflate
+    projectionMethod = ProjectionMethod.Cube
     hierarchicalMesh = None
 
     def __init__(self,filename,idx):

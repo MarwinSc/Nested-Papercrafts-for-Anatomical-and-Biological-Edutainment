@@ -20,7 +20,7 @@ class ImageProcessor():
     canvas_source.Update()
 
     #Main method to muliply structures
-    def multiplyingActors(self,dethPeeling,filter,brightBool,actorList,camera,height,width,occlusion,numberOfPeels):
+    def multiplyingActors(self,dethPeeling,filter,brightBool,actorList,camera,height,width,occlusion,numberOfPeels,lowerT=1.1,upperT=2.0):
 
         self.renList.clear()
 
@@ -44,36 +44,37 @@ class ImageProcessor():
 
         #if only one actor
         if len(actorList) == 1:
-            result = self.renList[0][3].GetOutput()
+            result = util.VtkToNp(self.renList[0][3].GetOutput())
             if brightBool:
-                result = self.optimizedBrighten(result,self.width,self.height,"0")
+                result = self.optimizedBrighten(result,lowerT,upperT)
 
         elif len(actorList) >= 2:
             #first two actors
-            image = self.renList[0][3].GetOutput()
-            image2 = self.renList[1][3].GetOutput()
+            image = util.VtkToNp(self.renList[0][3].GetOutput())
+            image2 = util.VtkToNp(self.renList[1][3].GetOutput())
             if brightBool:
-                image = self.optimizedBrighten(image,self.width,self.height,"0")
-                image2 = self.optimizedBrighten(image2,self.width,self.height,"1")
+                image = self.optimizedBrighten(image,lowerT,upperT)
+                image2 = self.optimizedBrighten(image2,lowerT,upperT)
 
-            result = self.normalizeMultiplication(image,image2,self.width,self.height).GetOutput()
+            result = self.normalizeMultiplication(image,image2)
 
             #the rest
             i = 0
             for a in actorList[2:]:
                 img = result
-                img2 = self.renList[2+i][3].GetOutput()
+                img2 = util.VtkToNp(self.renList[2+i][3].GetOutput())
                 if brightBool:
-                    img2 = self.optimizedBrighten(img2,self.width,self.height,"2")
-                result = self.normalizeMultiplication(img, img2,self.width,self.height).GetOutput()
+                    img2 = self.optimizedBrighten(img2,lowerT,upperT)
+                result = self.normalizeMultiplication(img, img2)
                 i = i + 1
 
         if filter:
             img = result
             img2 = self.canvas_source.GetOutput()
-            result = self.normalizeMultiplication(img, img2,self.width,self.height).GetOutput()
+            result = self.normalizeMultiplication(img, img2)
 
-        return result
+        dy, dx, dz = result.shape
+        return util.NpToVtk(result,dx, dy, dz)
 
     #method carrying out the normalization and multiplication of the structurs
     def normalizeMultiplication(self, image, image2):
@@ -87,8 +88,9 @@ class ImageProcessor():
 
         return result
 
-    def optimizedBrighten(self,image):
+    def optimizedBrighten(self,image,lowerT = 1.1, upperT= 2.0):
 
+        image = np.clip(image, 0.0, 255.0)
         img1 = image / 255
 
         averagePixelRed = np.mean(img1[:,:,0])
@@ -97,13 +99,13 @@ class ImageProcessor():
 
         x = img1[:,:,0] + img1[:,:,1] + img1[:,:,2]
 
-        white = np.where(x>2.0)
-        black = np.where(x<=1.1)
+        white = np.where(x>upperT)
+        black = np.where(x<=lowerT)
         #colored = np.where(np.logical_and(x>1.0,x<2.0))
-        colored = np.where(x<=2.0)
+        colored = np.where(x<=upperT)
 
         if averagePixelBlue > averagePixelGreen and averagePixelRed > averagePixelGreen:
-            img1[colored[0],colored[1],1] = img1[colored[0],colored[1],1] + (((img1[colored[0],colored[1],0]+img1[colored[0],colored[1],2])*0.5))
+            img1[colored[0],colored[1],1] = (img1[colored[0],colored[1],1] + (img1[colored[0],colored[1],0]+img1[colored[0],colored[1],2])*0.5)
             img1[colored[0],colored[1],0] = 1.0
             img1[colored[0],colored[1],2] = 1.0
 
@@ -111,7 +113,7 @@ class ImageProcessor():
             img1[black[0],black[1],1] = 0.0
             img1[black[0],black[1],2] = 1.0
         if averagePixelGreen > averagePixelBlue and averagePixelRed > averagePixelBlue:
-            img1[colored[0],colored[1],2] = img1[colored[0],colored[1],2] + (((img1[colored[0],colored[1],0]+img1[colored[0],colored[1],1])*0.5))
+            img1[colored[0],colored[1],2] = (img1[colored[0],colored[1],2] + (img1[colored[0],colored[1],0]+img1[colored[0],colored[1],1])*0.5)
             img1[colored[0],colored[1],1] = 1.0
             img1[colored[0],colored[1],0] = 1.0
 
@@ -119,7 +121,7 @@ class ImageProcessor():
             img1[black[0],black[1],1] = 1.0
             img1[black[0],black[1],2] = 0.0
         if averagePixelGreen > averagePixelRed and averagePixelBlue > averagePixelRed:
-            img1[colored[0],colored[1],0] = img1[colored[0],colored[1],0] + (((img1[colored[0],colored[1],2]+img1[colored[0],colored[1],1])*0.5))
+            img1[colored[0],colored[1],0] = (img1[colored[0],colored[1],0] + (img1[colored[0],colored[1],2]+img1[colored[0],colored[1],1])*0.5)
             img1[colored[0],colored[1],1] = 1.0
             img1[colored[0],colored[1],2] = 1.0
 

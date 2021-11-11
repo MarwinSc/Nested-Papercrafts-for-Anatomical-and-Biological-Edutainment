@@ -56,6 +56,9 @@ class HierarchicalMesh(object):
         # list holding the unfolded pieces of the papermesh once cut and unfold
         self.unfoldedActors = []
         self.gluetabs = []
+        self.modelFiles = []
+        self.gluetabFiles = []
+        self.mirrorgtFiles = []
 
     def setName(self, filename):
         '''
@@ -97,6 +100,7 @@ class HierarchicalMesh(object):
 
         print("checking if ", mesh.name, " is inside of ", self.name)
         return meshB_inside_meshA(bytes(self.offname, 'utf-8'), bytes(mesh.offname, 'utf-8'))
+
 
     def add(self, mesh):
         """
@@ -151,7 +155,7 @@ class HierarchicalMesh(object):
         newChild.parent = self
         self.reName()
 
-    def recursive_difference(self):
+    def recursive_difference(self, convexHull_cutout = False):
         """
         "Cuts" out children of this mesh from this mesh.
         Recursively "cuts" out children of children of children of children ...
@@ -162,8 +166,8 @@ class HierarchicalMesh(object):
         if self.mesh is not None and self.children:
 
             try:
-                self.boolThenCut()
-                # self.cutThenBool()
+                self.boolThenCut(convexHull_cutout)
+                #self.cutThenBool()
             except Exception:
                 raise Exception("Failure on Cut")
 
@@ -173,19 +177,36 @@ class HierarchicalMesh(object):
 
         # if all children are cut out save it and call boolean for children
         for child in self.children:
-            child.recursive_difference()
+            child.recursive_difference(convexHull_cutout)
 
-    def boolThenCut(self):
+    def boolThenCut(self, convexCutout = False):
         '''
         First calculates the difference with the inner mesh, then cuts the given papermesh open and uses boolean.cpp methods to mesh the resulting two boundary loops.
         '''
 
         final_mesh = trimesh.load(self.file)
-        for child in self.children:
-            tri_child = trimesh.load(child.file)
-            # final_mesh = final_mesh.difference(tri_child, engine='blender')
-            # final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
-            final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
+
+        if convexCutout:
+            #hull = vtk.vtkHull()
+            #hull.SetInputData(self.children[0].papermesh)
+            #hull.AddCubeFacePlanes()
+            #hull.AddRecursiveSpherePlanes(2)
+            #hull.Update()
+            delauney = vtk.vtkDelaunay3D()
+            delauney.SetInputData(self.children[0].papermesh)
+            delauney.Update()
+            surfaceFilter = vtk.vtkDataSetSurfaceFilter()
+            surfaceFilter.SetInputData(delauney.GetOutput())
+            surfaceFilter.Update()
+
+            util.writeStl(surfaceFilter.GetOutput(),"hull")
+
+            tri_child = trimesh.load(os.path.join(self.dirname, "../out/3D/hull.stl"))
+        else:
+            tri_child = trimesh.load(self.children[0].file)
+        # final_mesh = final_mesh.difference(tri_child, engine='blender')
+        #final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
+        final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
 
         filename = os.path.join(self.dirname, "../out/3D/differenced_" + self.name)
         final_mesh.export(filename)
@@ -228,6 +249,16 @@ class HierarchicalMesh(object):
             inPath = os.path.join(self.dirname, "../out/3D/connected.off")
             outPath = paths2[i]
             util.meshioIO(inPath, outPath)
+
+            #bool other children out of each piece
+            #TODO this has to be changed if we want to support multiple cuts per parent
+            for child in self.children[1:]:
+                final_mesh = trimesh.load(outPath)
+                tri_child = trimesh.load(child.file)
+                # final_mesh = final_mesh.difference(tri_child, engine='blender')
+                # final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
+                final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
+                final_mesh.export(outPath)
 
             mesh = util.readStl(outPath)
 
@@ -343,7 +374,7 @@ class HierarchicalMesh(object):
         for child in self.children:
             child.renderPaperMeshes(renderer)
 
-    def generatePaperMesh(self):
+    def generatePaperMesh(self, convex = False, adaptive = False):
         '''
         Generates a papermesh for the loaded structures in self.meshes.
         As a side effect the papermesh itself is saved to self.papermesh.
@@ -358,10 +389,48 @@ class HierarchicalMesh(object):
         triangleFilter = vtk.vtkTriangleFilter()
         triangleFilter.SetInputData(hull.GetOutput())
         triangleFilter.Update()
+
         mesh = util.subdivideMesh(triangleFilter.GetOutput())
-        mesh = util.cleanMesh(mesh)
         mesh = util.shrinkWrap(mesh, polysAppended)
-        self.papermesh = util.offsetMesh(mesh)
+
+        if adaptive:
+            #TODO if adaptive is used the edge length has to be based on the average edge length of the respective mesh
+            mesh = util.adaptiveSubdivideMesh(mesh, maxEdgeLength=30.0, numberOfTriangles=100, numberOfPasses=10)
+            mesh = util.shrinkWrap(mesh, polysAppended)
+            mesh = util.adaptiveSubdivideMesh(mesh, maxEdgeLength=15.0, numberOfTriangles=100, numberOfPasses=10)
+            mesh = util.shrinkWrap(mesh, polysAppended)
+
+
+        mesh = util.cleanMesh(mesh)
+
+        if convex:
+            delauney = vtk.vtkDelaunay3D()
+            delauney.SetInputData(mesh)
+            delauney.Update()
+            surfaceFilter = vtk.vtkDataSetSurfaceFilter()
+            surfaceFilter.SetInputData(delauney.GetOutput())
+            surfaceFilter.Update()
+            mesh = surfaceFilter.GetOutput()
+
+        self.papermesh = mesh
+
+        com = vtk.vtkCenterOfMass()
+        com.SetInputData(mesh)
+        com.Update()
+        com = com.GetCenter()
+
+        transform = vtk.vtkTransform()
+        transform.Translate(com[0],com[1],com[2])
+        transform.Scale(1.1, 1.1, 1.1)
+        transform.Translate(-com[0],-com[1],-com[2])
+        transform.Update()
+
+        scale = vtk.vtkTransformPolyDataFilter()
+        scale.SetTransform(transform)
+        scale.SetInputData(mesh)
+        scale.Update()
+        self.papermesh = scale.GetOutput()
+
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(self.papermesh)
         actor = vtk.vtkActor()
@@ -431,11 +500,11 @@ class HierarchicalMesh(object):
                 outpath = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs.stl")
                 util.meshioIO(filename, outpath)
                 self.gluetabs.append(util.readStl(outpath))
-                self.modelFiles = os.path.join(self.dirname, "../out/3D/unfolded/model{}.obj".format(self.getChildIdx() + "_" + str(i)))
-                self.gluetabFiles = os.path.join(self.dirname,
-                                                "../out/3D/unfolded/gluetabs{}.obj".format(self.getChildIdx() + "_" + str(i)))
-                self.mirrorgtFiles = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored{}.obj".format(
-                    self.getChildIdx() + "_" + str(i)))
+                self.modelFiles.append(os.path.join(self.dirname, "../out/3D/unfolded/model{}.obj".format(self.getChildIdx() + "_" + str(i))))
+                self.gluetabFiles.append(os.path.join(self.dirname,
+                                                "../out/3D/unfolded/gluetabs{}.obj".format(self.getChildIdx() + "_" + str(i))))
+                self.mirrorgtFiles.append(os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored{}.obj".format(
+                    self.getChildIdx() + "_" + str(i))))
 
             else:
                 unfoldedString += "Not Unfolded, "
@@ -474,40 +543,54 @@ class HierarchicalMesh(object):
         '''
         idx = 0
         for i, mesh in enumerate(self.meshes):
-            dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
-            projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
+            # if there are multiple pieces
             if j < 0:
+                dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
+                projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
+                # createUnfoldedPaperMesh is deprecated but still used for the previewTexture
                 img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetab, idx)
+            # if the papermesh is complete
             else:
+                map_innerMesh_to_cutPlane = self.create_projection_dictionary_for_cutout()
+                dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor, hull = self.cut_boundingBox(actor.GetMapper().GetInput(),j), map = map_innerMesh_to_cutPlane)
+                #dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
+                projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), idx, resolution)
+                # createUnfoldedPaperMesh is deprecated but still used for the previewTexture
                 img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetabs[j], idx)
-            img = projector.mask(util.VtkToNp(img))
-            # dy, dx, dz = img.shape
-            # img = util.NpToVtk(img, dx, dy, dz)
-            # filename = (r"C:\Users\marwi\OneDrive\Desktop\TU\ws21\AE\out\2D\texture_debug_before_optimized.png")
-            # util.writeImage(img, filename)
+
+            if j < 0:
+                front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile, textureIdx+i,
+                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
+            else:
+                front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j], textureIdx+i,
+                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
 
             previewTexture = projector.mask(util.VtkToNp(previewTexture))
+            front_output = util.VtkToNp(front_output)
+            # to multiply textures of successive meshes
             if i > 0:
                 previousPreviewTexture = self.multiplyProjections(previewTexture, previousPreviewTexture, textureIdx)
-                previousImage = self.multiplyProjections(img, previousImage, textureIdx)
+                previousFrontOutput = self.multiplyProjections(front_output,previousFrontOutput,textureIdx)
+            # for the first mesh or if we have only one
             else:
                 previousPreviewTexture = self.multiplyProjections(previewTexture, None, textureIdx)
-                previousImage = self.multiplyProjections(img, None, textureIdx)
+                previousFrontOutput = self.multiplyProjections(front_output, None, textureIdx)
 
-            filename = os.path.join(self.dirname, "../out/2D/texture{}.png".format(textureIdx))
-            print(filename)
-
-            if j < 0:
-                projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile, textureIdx,
-                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
-            else:
-                projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j], textureIdx,
-                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
-
-            dy, dx, dz = previousImage.shape
-            util.writeImage(util.NpToVtk(previousImage, dx, dy, dz), filename)
             idx += 1
             print("Projected a mesh")
+
+        # subtract the labelIDs rendering from the multiplied texture, masking front and back and save to disk
+        previousFrontOutput = previousFrontOutput - util.VtkToNp(labelIDs_output)
+
+        previousFrontOutput, back_output = projector.mask(previousFrontOutput, util.VtkToNp(back_output))
+
+        filename = os.path.join(self.dirname, "../out/2D/unfolding_back{}.png".format(textureIdx))
+        dy, dx, dz = back_output.shape
+        util.writeImage(util.NpToVtk(back_output, dx, dy, dz), filename)
+        filename = os.path.join(self.dirname, "../out/2D/unfolding{}.png".format(textureIdx))
+        dy, dx, dz = previousFrontOutput.shape
+        util.writeImage(util.NpToVtk(previousFrontOutput, dx, dy, dz), filename)
+
 
         # Set Texture for preview
         texture = vtk.vtkTexture()
@@ -518,19 +601,58 @@ class HierarchicalMesh(object):
         castFilter.SetOutputScalarTypeToUnsignedChar()
         castFilter.Update()
         texture.SetInputData(castFilter.GetOutput())
-
-        # filename = os.path.join(self.dirname, "../out/2D/preview_texture{}.png".format(textureIdx))
-        # util.writeImage(previousPreviewTexture, filename)
-
         actor.GetMapper().SetInputData(self.meshProcessor.normalizeUV(actor.GetMapper().GetInput()))
-
         actor.SetTexture(texture)
         actor.Modified()
         actor.GetProperty().SetOpacity(1.0)
 
         return actor
 
-    def multiplyProjections(self, image, prev_image, idx):
+    def cut_boundingBox(self, mesh, i):
+        hull = vtk.vtkHull()
+        hull.SetInputData(mesh)
+        hull.AddCubeFacePlanes()
+        hull.Update()
+        cutNormal = self.cutPlane.GetNormal()
+        invertedNormal = (-1.0 * float(cutNormal[0]), -1.0 * float(cutNormal[1]), -1.0 * float(cutNormal[2]))
+        invPlane = vtk.vtkPlane()
+        invPlane.SetOrigin(self.cutPlane.GetOrigin())
+        invPlane.SetNormal(invertedNormal[0], invertedNormal[1], invertedNormal[2])
+        planes = [self.cutPlane, invPlane]
+        hullPieces = self.meshProcessor.cutMeshWithPlanes(hull.GetOutput(), planes, None)
+        fillHoles = vtk.vtkFillHolesFilter()
+        print(i)
+        fillHoles.SetInputData(hullPieces[i])
+        fillHoles.SetHoleSize(10000.0)
+        fillHoles.Update()
+        filledMesh = fillHoles.GetOutput()
+        filledMesh = util.calcMeshNormals(filledMesh)
+        filledMesh.GetPoints().GetData().Modified()
+        return filledMesh
+
+    def create_projection_dictionary_for_cutout(self):
+        '''
+        creates a dictionary that has the vertex positions of the inner mesh as key, and the projected position onto the cut plane as value.
+        '''
+        dictionary = {}
+        newGeometry = vtk.vtkPolyData()
+        newPoints = vtk.vtkPoints()
+
+        for child in self.children:
+            # support also cut inner meshes or does unfolded actor remain unchanged after cutting
+            poly = child.unfoldedActor.GetMapper().GetInput()
+            points = poly.GetPoints()
+            for i in range(points.GetNumberOfPoints()):
+                projected = [0.0,0.0,0.0]
+                self.cutPlane.GeneralizedProjectPoint(points.GetPoint(i),projected)
+                dictionary[points.GetPoint(i)] = projected
+                newPoints.InsertNextPoint(projected)
+
+        newGeometry.SetPoints(newPoints)
+        util.writeStl(newGeometry,"debu_projected_points")
+        return dictionary
+
+    def multiplyProjections(self,image,prev_image,idx):
         '''
         Multiplies a previously written image and a given image and writes the result to disk.
         :param image: a numpy array, the previously written file
@@ -595,12 +717,12 @@ class HierarchicalMesh(object):
         for debugging purposes.
         '''
         if self.parent:
-            directory = os.path.join(self.dirname, "../out/3D")
+            directory = os.path.join(self.dirname, "../out/3D/unfolded")
             unfoldedString = ""
             for filename in os.listdir(directory):
                 if hasattr(self, "meshPieces"):
                     for i in range(len(self.meshPieces)):
-                        if filename == "unfolded_{}_piece_{}.obj".format(self.getChildIdx(), i):
+                        if filename == os.path.join(self.dirname, "model{}.obj".format(self.getChildIdx() + "_" + str(i))):
                             mesh = util.readObj(os.path.join(directory, filename))
                             mapper = vtk.vtkPolyDataMapper()
                             mapper.SetInputData(mesh)
@@ -610,15 +732,15 @@ class HierarchicalMesh(object):
                             self.unfoldedActors.append(actor)
                             unfoldedString += "Unfolded, "
                             self.modelFiles.append(filename)
-                        elif filename == "gluetabs_{}_piece_{}.obj".format(self.getChildIdx(), i):
+                        elif filename == os.path.join(self.dirname,"gluetabs{}.obj".format(self.getChildIdx() + "_" + str(i))):
                             mesh = util.readObj(os.path.join(directory, filename))
                             self.gluetabs.append(mesh)
                             self.gluetabFiles.append(filename)
-                            self.mirrorgtFiles.append(
-                                os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj"))
+                        elif os.path.join(self.dirname, "gluetabs_mirrored{}.obj".format(self.getChildIdx() + "_" + str(i))):
+                            self.mirrorgtFiles.append(filename)
 
                 else:
-                    if filename == "unfolded_{}.obj".format(self.getChildIdx()):
+                    if os.path.join(self.dirname, "model{}.obj".format(self.getChildIdx())):
                         mesh = util.readObj(os.path.join(directory, filename))
                         mapper = vtk.vtkPolyDataMapper()
                         mapper.SetInputData(mesh)
@@ -628,11 +750,12 @@ class HierarchicalMesh(object):
                         self.unfoldedActor = actor
                         self.modelFile = filename
                         unfoldedString = "Unfolded"
-                    elif filename == "gluetabs_{}.obj".format(self.getChildIdx()):
+                    elif os.path.join(self.dirname, "gluetabs{}.obj".format(self.getChildIdx())):
                         mesh = util.readObj(os.path.join(directory, filename))
                         self.gluetab = mesh
                         self.gluetabFile = filename
-                        self.mirrorgtFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored.obj")
+                    elif os.path.join(self.dirname, "gluetabs_mirrored{}.obj".format(self.getChildIdx())):
+                        self.mirrorgtFile = filename
 
             self.label.setText(unfoldedString)
 
@@ -734,13 +857,23 @@ class HierarchicalMesh(object):
         '''
         if self.parent:
             plane = vtk.vtkPlane()
-            x0, y0, z0 = (bds[self.getLevel() - 1][1] - abs(bds[self.getLevel() - 1][0])) / 2., (
-                        bds[self.getLevel() - 1][3] - abs(bds[self.getLevel() - 1][2])) / 2., (
-                                     bds[self.getLevel() - 1][5] - abs(bds[self.getLevel() - 1][4])) / 2.
-            plane.SetOrigin(x0, y0, z0)
-            plane.SetNormal(viewpoints[self.getLevel() - 1][0], viewpoints[self.getLevel() - 1][1],
-                            viewpoints[self.getLevel() - 1][2])
-            self.cutPlane = plane
+            #x0, y0, z0 = (bds[self.getLevel() - 1][1] - abs(bds[self.getLevel() - 1][0])) / 2., (
+            #            bds[self.getLevel() - 1][3] - abs(bds[self.getLevel() - 1][2])) / 2., (
+            #                         bds[self.getLevel() - 1][5] - abs(bds[self.getLevel() - 1][4])) / 2.
+            meshes = []
+            for child in self.children:
+                meshes.append(child.papermesh)
+            if meshes:
+                mesh = util.appendMeshes(meshes)
+                com = vtk.vtkCenterOfMass()
+                com.SetInputData(mesh)
+                com.Update()
+                x0,y0,z0 = com.GetCenter()
+
+                plane.SetOrigin(x0, y0, z0)
+                plane.SetNormal(viewpoints[self.getLevel() - 1][0], viewpoints[self.getLevel() - 1][1],
+                                viewpoints[self.getLevel() - 1][2])
+                self.cutPlane = plane
 
         for child in self.children:
             child.addCutPlanes(viewpoints, bds)

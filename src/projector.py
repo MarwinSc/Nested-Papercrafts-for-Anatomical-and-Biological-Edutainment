@@ -326,7 +326,7 @@ def cropRenderedTriangle(image, pointsImage, resolution, count = 1):
 
     return result, pointsResult
 
-def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None, rotation=None):
+def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None, rotation=None, drawEdges = False):
     if rotation is None:
         rotation = [0.0, 0.0, 0.0, 0.0]
     if color is None:
@@ -337,7 +337,8 @@ def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None
     model_actor = vtk.vtkActor()
     model_actor.SetMapper(model_mapper)
     model_actor.GetProperty().SetLineWidth(1)
-    model_actor.GetProperty().EdgeVisibilityOn()
+    if drawEdges:
+        model_actor.GetProperty().EdgeVisibilityOn()
     model_actor.GetProperty().LightingOff()
 
     if texCoordinates is None:
@@ -347,7 +348,7 @@ def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None
         readerFac = vtk.vtkImageReader2Factory()
         imageReader = readerFac.CreateImageReader2(filename)
         imageReader.SetFileName(filename)
-        print("using texture,", filename)
+        print("using preview_texture,", filename)
         texture = vtk.vtkTexture()
         texture.SetInputConnection(imageReader.GetOutputPort())
         model_actor.GetMapper().GetInput().GetPointData().SetTCoords(texCoordinates)
@@ -394,7 +395,7 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     ren = vtk.vtkRenderer()
     ren.SetBackground(255.0, 255.0, 255.0)
     renWin = vtk.vtkRenderWindow()
-    renWin.SetSize(2000, 2000)
+    renWin.SetSize(6000, 6000)
     renWin.AddRenderer(ren)
     wti = vtk.vtkWindowToImageFilter()
     wti.SetInput(renWin)
@@ -407,14 +408,16 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     render_triangle_obj(model_reader, ren, idx=idx, texCoordinates=textureCoordinates)
 
     gt_reader = load_from_obj(labels)
-    render_triangle_obj(gt_reader, ren, color=[50, 50, 50])
-    label_gt(gt_reader, ren, 2, [255, 0, 0])
+    render_triangle_obj(gt_reader, ren, color=[50, 50, 50], drawEdges=True)
+    # I add the IDs at the end to the texture
+    #label_gt(gt_reader, ren, 2, [255, 0, 0])
 
     renWin.Render()
     wti.Update()
 
     filename = os.path.join(dirname, "../out/2D/front_output{}.png".format(uniqueid))
-    util.writeImage(wti.GetOutput(), filename)
+    front_output = wti.GetOutput()
+    util.writeImage(front_output, filename)
 
     ren.RemoveAllViewProps()
     renWin.Render()
@@ -425,16 +428,30 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     wti.ReadFrontBufferOff()
 
     mirror_gt_reader = load_from_obj(mirroredLabels)
-    render_triangle_obj(mirror_gt_reader, ren, color=[50, 50, 50])
+    render_triangle_obj(mirror_gt_reader, ren, color=[50, 50, 50], drawEdges=True)
     label_gt(mirror_gt_reader, ren, 2, [255, 0, 0])
 
     renWin.Render()
     wti.Update()
     filename = os.path.join(dirname, "../out/2D/back_output{}.png".format(uniqueid))
-    img = wti.GetOutput() # maybe flip this depending on the printer
-    util.writeImage(wti.GetOutput(), filename)
+    back_output = wti.GetOutput() # maybe flip this depending on the printer
+    util.writeImage(back_output, filename)
     uniqueid += 1
 
+    # rendering labelIDs alone on black background to subtract from the final multiplied texture
+    ren.RemoveAllViewProps()
+    ren.SetBackground(0.0,0.0,0.0)
+    render_triangle_obj(gt_reader, ren, color=[0.0, 0.0, 0.0])
+    label_gt(gt_reader, ren, 3, [0.0, 0.33, 0.33])
+    renWin.Render()
+    wti = vtk.vtkWindowToImageFilter()
+    wti.SetInput(renWin)
+    wti.SetInputBufferTypeToRGB()
+    wti.ReadFrontBufferOff()
+    wti.Update()
+    labelIDs_output = wti.GetOutput()
+
+    return front_output, back_output, labelIDs_output
 
 def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, idx):
     '''
@@ -613,12 +630,20 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     return img,previewTexture
 
 
-def mask(img):
+def mask(img,img_back = None):
     mask = np.where(img != 255)
     width = mask[0].max() - mask[0].min()
     height = mask[1].max() - mask[1].min()
     if width > height:
         img = img[mask[0].min():mask[0].max(), mask[1].min(): mask[1].min() + width, :]
+        if img_back is not None:
+            img_back = img_back[mask[0].min():mask[0].max(), mask[1].min(): mask[1].min() + width, :]
     else:
         img = img[mask[0].min():mask[0].min() + height, mask[1].min(): mask[1].max(), :]
-    return img
+        if img_back is not None:
+            img_back = img_back[mask[0].min():mask[0].min() + height, mask[1].min(): mask[1].max(), :]
+
+    if img_back is not None:
+        return img, img_back
+    else:
+        return img

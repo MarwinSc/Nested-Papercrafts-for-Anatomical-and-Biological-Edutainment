@@ -82,7 +82,7 @@ class Ui_MainWindow(object):
         multiplyingButton = QtWidgets.QPushButton("Multiply")
 
         def onMultiply():
-            org.onMultiply(depthPeelingCheck.isChecked(),filterEnabled.isChecked(),brightenCheck.isChecked())
+            org.onMultiply(depthPeelingCheck.isChecked(),filterEnabled.isChecked(),brightenCheck.isChecked(),lowerThreshold_Brightening_slider.value(),upperThreshold_Brightening_slider.value())
             org.swapViewports(True)
 
             self.vtkWidget.update()
@@ -99,6 +99,8 @@ class Ui_MainWindow(object):
                 UpdateColorFilter.filter = filterEnabled.isChecked()
                 UpdateColorFilter.brighten = brightenCheck.isChecked()
                 UpdateColorFilter.run = True
+                UpdateColorFilter.lowerT = lowerThreshold_Brightening_slider.value()
+                UpdateColorFilter.upperT = upperThreshold_Brightening_slider.value()
                 ren.GetRenderWindow().GetInteractor().AddObserver("EndInteractionEvent", UpdateColorFilter)
                 # self.vtkWidget.update()
             else :
@@ -182,7 +184,7 @@ class Ui_MainWindow(object):
             writer.Write()
 
         unfoldIterationsTextfield = QtWidgets.QLineEdit()
-        unfoldIterationsTextfield.setText("50000")
+        unfoldIterationsTextfield.setText("100000")
 
         saveVPtoImageButton = QtWidgets.QPushButton("Save as Image")
         saveVPtoImageButton.clicked.connect(onSaveVpToImage)
@@ -191,7 +193,7 @@ class Ui_MainWindow(object):
             try:
                 iterations = int(unfoldIterationsTextfield.text())
             except:
-                iterations = 50000
+                iterations = 100000
             org.unfoldPaperMeshPass(iterations)
             self.vtkWidget.update()
 
@@ -276,15 +278,19 @@ class Ui_MainWindow(object):
 
 
         entropyButton = QtWidgets.QPushButton("Cut")
+        convexHull_cutout_checkbox = QtWidgets.QCheckBox("Convex Hull")
+        convexHull_cutout_checkbox.setChecked(True)
+
         def onEntropy():
 
             hl = org.hierarchical_mesh_anchor.toActorList()
-            window = ViewPointComputation(hl)
+            window = ViewPointComputation(hl,openWindow=False)
             viewpoints, bounds = window.getMaxViewPoints_AndBounds()
-            org.renderCutPlanes(viewpoints,bounds)
-            org.cutHM(viewpoints, bounds)
+            #org.renderCutPlanes(viewpoints,bounds)
+            org.cutHM(viewpoints, bounds, convexHull_cutout_checkbox.isChecked())
 
             self.vtkWidget.update()
+            onRenderPaperMeshes()
 
         entropyButton.clicked.connect(onEntropy)
 
@@ -298,6 +304,13 @@ class Ui_MainWindow(object):
         def onImportUnfolded():
             org.importUnfolded()
         importUnfoldedButton.clicked.connect(onImportUnfolded)
+
+        lowerThreshold_Brightening_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        lowerThreshold_Brightening_slider.setRange(0,90)
+        lowerThreshold_Brightening_slider.setValue(33)
+        upperThreshold_Brightening_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        upperThreshold_Brightening_slider.setRange(0,90)
+        upperThreshold_Brightening_slider.setValue(60)
 
         """
         Adding UI elements to their respective container.
@@ -344,8 +357,16 @@ class Ui_MainWindow(object):
         checkboxLayout.addWidget(multiplyingCheck)
         checkboxLayout.addWidget(filterEnabled)
 
+        sliderGroup = QtWidgets.QGroupBox()
+        sliderLayout = QtWidgets.QHBoxLayout()
+        sliderGroup.setLayout(sliderLayout)
+        sliderLayout.setSizeConstraint(QtWidgets.QLayout.SetMinAndMaxSize)
+        sliderLayout.addWidget(lowerThreshold_Brightening_slider)
+        sliderLayout.addWidget(upperThreshold_Brightening_slider)
+
         previewGroupLayout.addWidget(multiplyingButton)
         previewGroupLayout.addWidget(checkboxGroup)
+        previewGroupLayout.addWidget(sliderGroup)
         previewGroupLayout.addWidget(filterButton)
         previewGroupLayout.setSizeConstraint(QtWidgets.QLayout.SetMinAndMaxSize)
 
@@ -375,6 +396,8 @@ class Ui_MainWindow(object):
         paperCreationLayout = QtWidgets.QVBoxLayout()
         paperCreationBox.setLayout(paperCreationLayout)
         paperCreationLayout.addWidget(entropyButton)
+        paperCreationLayout.addWidget(convexHull_cutout_checkbox)
+
         paperCreationLayout.addWidget(unfoldPaperMeshButton)
         paperCreationLayout.addWidget(unfoldIterationsTextfield)
         paperCreationLayout.addWidget(projectPerTriangle)
@@ -516,11 +539,11 @@ class Ui_MainWindow(object):
 
             inflate = QtWidgets.QPushButton("Inflate")
             inflate.setCheckable(True)
-            inflate.setChecked(True)
             clipping = QtWidgets.QPushButton("Clipping")
             clipping.setCheckable(True)
             cube = QtWidgets.QPushButton("Cube")
             cube.setCheckable(True)
+            cube.setChecked(True)
 
             def onInflate():
                 clipping.setChecked(False)
@@ -638,7 +661,7 @@ class SimpleView(QtWidgets.QMainWindow):
 def UpdateColorFilter(caller, ev):
     if UpdateColorFilter.run:
          UpdateColorFilter.sr.changeCameraForFilter(UpdateColorFilter.cam.GetPosition(), UpdateColorFilter.cam.GetFocalPoint(), UpdateColorFilter.cam.GetClippingRange(), UpdateColorFilter.cam.GetViewUp(), UpdateColorFilter.cam.GetDistance())
-         UpdateColorFilter.sr.onMultiply(UpdateColorFilter.dp,UpdateColorFilter.filter,UpdateColorFilter.brighten)
+         UpdateColorFilter.sr.onMultiply(UpdateColorFilter.dp,UpdateColorFilter.filter,UpdateColorFilter.brighten,UpdateColorFilter.lowerT,UpdateColorFilter.upperT)
 
 if __name__ == '__main__':
 
