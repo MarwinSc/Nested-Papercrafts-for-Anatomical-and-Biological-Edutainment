@@ -29,6 +29,8 @@ namespace ae {
 		boolean_interface();
 		~boolean_interface();
 		void merge(std::string first, float threshold, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z);
+		void simplify(std::string first, double stop_ratio);
+		void approximate(std::string first);
 		Mesh merge_vertices_by_distance(Mesh first_mesh, double threshold, K::Plane_3 cut_plane);
 		void triangulateCut(std::string first, float threshold, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z);
 
@@ -37,7 +39,8 @@ namespace ae {
 		Mesh connectBoundaries(Mesh mesh, K::Vector_3 compareNormal);
 		std::vector<float> getEdgeLengths(halfedge_descriptor hd, Mesh mesh);
 		float triangleAspectRatio(face_descriptor fd, Mesh mesh);
-		Mesh removeDegenFaces(Mesh mesh, float threshold, K::Plane_3 cut_plane);
+		Mesh removeNeedleTriangles(Mesh mesh, float threshold, K::Plane_3 cut_plane);
+		void approximate_mesh(Mesh mesh);
 	};
 }
 
@@ -46,5 +49,9 @@ extern "C" 	__declspec(dllexport) ae::boolean_interface * __stdcall _boolean_int
 extern "C" 	__declspec(dllexport) void __stdcall _triangulateCut(ae::boolean_interface * g, char* first, float t, float x, float y, float z, float o_x, float o_y, float o_z);
 
 extern "C" 	__declspec(dllexport) void __stdcall _merge(ae::boolean_interface * g, char* first, float t, float x, float y, float z, float o_x, float o_y, float o_z);
+
+extern "C" 	__declspec(dllexport) void __stdcall _approximate(ae::boolean_interface * g, char* first);
+
+extern "C" 	__declspec(dllexport) void __stdcall _simplify(ae::boolean_interface * g, char* first, double stop_ratio);
 
 #endif

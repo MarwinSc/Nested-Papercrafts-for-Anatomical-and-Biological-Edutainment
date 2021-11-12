@@ -15,6 +15,9 @@ class Boolean_Interface(object):
         self.boolean_interface._boolean_interface.restype = ctypes.c_void_p
         self.boolean_interface._triangulateCut.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float, ctypes.c_float,ctypes.c_float,ctypes.c_float, ctypes.c_float,ctypes.c_float,ctypes.c_float]
         self.boolean_interface._merge.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float, ctypes.c_float,ctypes.c_float,ctypes.c_float, ctypes.c_float,ctypes.c_float,ctypes.c_float]
+        self.boolean_interface._approximate.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        self.boolean_interface._simplify.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_double]
+
 
         self.obj = self.boolean_interface._boolean_interface()
 
@@ -33,3 +36,10 @@ class Boolean_Interface(object):
         """
         self.boolean_interface._triangulateCut(self.obj, path.encode(), threshold, normal_x, normal_y, normal_z, origin_x, origin_y, origin_z)
 
+    def approximate(self, path):
+
+        self.boolean_interface._approximate(self.obj, path.encode())
+
+    def simplify(self, path, stop_ratio):
+
+        self.boolean_interface._simplify(self.obj, path.encode(), stop_ratio)

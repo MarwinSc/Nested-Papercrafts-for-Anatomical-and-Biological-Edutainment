@@ -6,6 +6,7 @@ import util
 from boolean import boolean_interface
 from mu3d.mu3dpy.mu3d import Graph
 from PyQt5 import QtWidgets
+from vtkmodules.vtkCommonCore import vtkMath
 
 class MeshProcessing():
     '''
@@ -399,6 +400,31 @@ class MeshProcessing():
                 outPath = os.path.join(self.dirname,"../out/3D/objTestCuts/BooledPapermeshCuts/booledPapermeshPiece{}".format(i)+"_rotated.obj")
                 util.meshioIO(inPath,outPath)
 
+    def getAverageEdgeLength(self, polydata):
 
+        polydata = util.cleanMesh(polydata)
 
+        averageDistance = 0
+        numberOfEdges = 0
+        maxDistance = 0
+        minDistance = 10000
 
+        extractEdges = vtk.vtkExtractEdges()
+        extractEdges.SetInputData(polydata)
+        extractEdges.Update()
+        lines = extractEdges.GetOutput()
+
+        for i in range(lines.GetNumberOfCells()):
+            p0 = lines.GetCell(i).GetPoints().GetPoint(0)
+            p1 = lines.GetCell(i).GetPoints().GetPoint(1)
+            distSquared = vtkMath.Distance2BetweenPoints(p0, p1)
+            averageDistance = (averageDistance + distSquared)
+            numberOfEdges += 1
+            if distSquared > maxDistance: maxDistance = distSquared
+            if distSquared < minDistance: minDistance = distSquared
+
+        averageDistance = averageDistance/lines.GetNumberOfCells()
+
+        #print("Min: {} Max: {} Avg: {}".format(minDistance,maxDistance,averageDistance))
+
+        return minDistance, maxDistance, averageDistance

@@ -9,12 +9,16 @@
 #include <CGAL/Polygon_mesh_processing/remesh.h>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 
+#include <CGAL/Polygon_mesh_processing/repair_polygon_soup.h>
+
 #include <CGAL/boost/graph/selection.h>
 #include <CGAL/squared_distance_3.h>
 
 #include <CGAL/Surface_mesh_simplification/edge_collapse.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Count_ratio_stop_predicate.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Count_stop_predicate.h>
+
+#include <CGAL/Surface_mesh_approximation/approximate_triangle_mesh.h>
 
 #include <CGAL/Vector_3.h>
 
@@ -25,6 +29,7 @@ namespace ae{
 	namespace PMP = CGAL::Polygon_mesh_processing;
 	namespace params = PMP::parameters;
 	namespace SMS = CGAL::Surface_mesh_simplification;
+	namespace VSA = CGAL::Surface_mesh_approximation;
 
 	struct Vector_pmap_wrapper {
 		std::vector<bool>& vect;
@@ -70,6 +75,133 @@ namespace ae{
 		output.clear();
 	}
 
+	void boolean_interface::simplify(std::string first, double stop_ratio) {
+		std::cout << first << std::endl;
+		const char* filename1 = first.c_str();
+		std::ifstream input(filename1);
+		Mesh mesh;
+		if (!input || !(input >> mesh))
+		{
+			std::cerr << "First mesh is not a valid off file." << std::endl;
+		}
+		input.close();
+
+		// In this example, the simplification stops when the number of undirected edges
+		// drops below 10% of the initial count
+		SMS::Count_ratio_stop_predicate<Mesh> stop(stop_ratio);
+		int r = SMS::edge_collapse(mesh, stop);
+
+		mesh.collect_garbage();
+		std::ofstream output("../out/3D/simplified.off");
+		output.precision(17);
+		output << mesh;
+		output.close();
+		output.clear();
+	}
+
+
+	void boolean_interface::approximate(std::string first) {
+		std::cout << first << std::endl;
+		const char* filename1 = first.c_str();
+		std::ifstream input(filename1);
+		Mesh mesh;
+		if (!input || !(input >> mesh))
+		{
+			std::cerr << "First mesh is not a valid off file." << std::endl;
+		}
+		input.close();
+
+		boolean_interface::approximate_mesh(mesh);
+
+	}
+
+	typedef boost::property_map<Mesh, boost::vertex_point_t>::type Vertex_point_map;
+	typedef CGAL::Variational_shape_approximation<Mesh, Vertex_point_map> Mesh_approximation;
+	typedef Mesh_approximation::Error_metric L21_metric;
+
+	typedef std::vector<std::size_t> Polygon;
+
+	void boolean_interface::approximate_mesh(Mesh mesh)
+	{
+		Vertex_point_map vpmap = get(boost::vertex_point, const_cast<Mesh&>(mesh));
+		// error metric and fitting function
+		L21_metric error_metric(mesh, vpmap);
+		// creates VSA algorithm instance
+		Mesh_approximation approx(mesh, vpmap, error_metric);
+		// seeds 100 random proxies
+		approx.initialize_seeds(CGAL::parameters::seeding_method(VSA::HIERARCHICAL)
+			//.max_number_of_proxies(15)
+			.min_error_drop(0.05));
+
+		// runs 30 iterations
+		approx.run(5);
+		// adds 3 proxies to the one with the maximum fitting error,
+		// running 5 iterations between each addition
+		//approx.add_to_furthest_proxies(3, 5);
+		// runs 10 iterations
+		//approx.run(5);
+		// teleports 2 proxies to tunnel out of local minima,
+		// running 5 iterations between each teleport
+		//approx.teleport_proxies(2, 5);
+		// runs 10 iterations
+		//approx.run(10);
+		// extract approximated mesh with default parameters
+		approx.extract_mesh(CGAL::parameters::all_default());
+		// get approximated triangle soup
+		std::vector<K::Point_3> anchors;
+		std::vector<std::array<std::size_t, 3> > triangles;
+
+		approx.output(CGAL::parameters::anchors(std::back_inserter(anchors)).
+			triangles(std::back_inserter(triangles)));
+
+		std::vector<Polygon> polygons;
+
+		Polygon p;
+		for (auto &tri : triangles) {
+			p.push_back(tri.at(0));
+			p.push_back(tri.at(1));
+			p.push_back(tri.at(2));
+			polygons.push_back(p);
+			p.clear();
+		}
+
+		PMP::repair_polygon_soup(anchors, polygons);
+
+		// convert from soup to surface mesh
+		PMP::orient_polygon_soup(anchors, polygons);
+
+		if (!PMP::is_polygon_soup_a_polygon_mesh(polygons)) {
+			std::cerr << "Not a valid polygon mesh!" << std::endl;
+		}
+
+		Mesh output;
+		PMP::polygon_soup_to_polygon_mesh(anchors, polygons, output);
+		if (CGAL::is_closed(output) && (!PMP::is_outward_oriented(output))) {
+			PMP::reverse_face_orientations(output);
+		}
+
+		PMP::orient_to_bound_a_volume(output);
+
+		// Fix manifoldness by splitting non-manifold vertices
+		PMP::duplicate_non_manifold_vertices(output);
+
+		for (vertex_descriptor v : vertices(output))
+		{
+			if (PMP::is_non_manifold_vertex(v, output))
+			{
+				std::cout << "vertex " << v << " is non-manifold" << std::endl;
+			}
+		}
+
+
+		PMP::stitch_borders(output);
+
+		std::ofstream out("../out/3D/dump.off");
+		out << output;
+		out.close();
+
+	}
+
 	void boolean_interface::triangulateCut(std::string first, float threshold, float n_x, float n_y, float n_z, float o_x, float o_y, float o_z) {
 		std::cout << first << std::endl;
 		const char* filename1 = first.c_str();
@@ -84,8 +216,10 @@ namespace ae{
 		K::Plane_3 cut_plane = K::Plane_3(K::Point_3(o_x, o_y, o_z), K::Vector_3(n_x, n_y, n_z));
 		//mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
 		mesh = boolean_interface::merge_vertices_by_distance(mesh, threshold, cut_plane);
-		//mesh = boolean_interface::removeDegenFaces(mesh,0.2f,cut_plane);
+		
 		mesh = boolean_interface::connectBoundaries(mesh, K::Vector_3(n_x, n_y, n_z));
+
+		//mesh = boolean_interface::removeNeedleTriangles(mesh, 100000.0f, cut_plane);
 
 	}
 	
@@ -383,50 +517,52 @@ namespace ae{
 		int count = 0;
 
 		Mesh::Property_map<vertex_descriptor, K::Point_3> location = first_mesh.points();
-		Mesh::Vertex_range range = first_mesh.vertices();
-		Mesh::Vertex_range::iterator  vb, ve;
-		vb = boost::begin(range);
-		ve = boost::end(range);
-		for (boost::tie(vb, ve) = first_mesh.vertices(); vb != ve; ++vb) {
-			vertex_descriptor vd = *vb;
+		bool breakOut = false;
+		bool repeat = true;
+		while (repeat)
+		{
+			for (vertex_descriptor vd : first_mesh.vertices()) {
 
-			CGAL::Vertex_around_target_circulator<Mesh> vbegin(first_mesh.halfedge(vd), first_mesh), done(vbegin);
+				CGAL::Vertex_around_target_circulator<Mesh> vbegin(first_mesh.halfedge(vd), first_mesh), done(vbegin);
 
-			do {
-				vertex_descriptor vd2 = *vbegin++;
-				//std::cout << vd << " to " << vd2 << std::endl;
-				float distance = CGAL::squared_distance(location[vd], location[vd2]);
-				//check distance, all other conditions most likely got obsolete
-				if (distance < threshold && (vd != vd2) && !(first_mesh.is_removed(vd)) && !(first_mesh.is_removed(vd2))) {
+				do {
+					vertex_descriptor vd2 = *vbegin++;
+					std::cout << vd << " to " << vd2 << std::endl;
+					float distance = CGAL::squared_distance(location[vd], location[vd2]);
+					//check distance, all other conditions most likely got obsolete
+					if (distance < threshold) {
 
-					K::Point_3 loc = location[vd];
-					K::Point_3 loc2 = location[vd2];
-					//std::cout << vd << " at " << loc[2] << std::endl;
-					//std::cout << " to " << std::endl;
-					//std::cout << vd2 << " at " << loc2[2] << std::endl;
-					//std::cout << "has length " << distance << std::endl;
+						K::Point_3 loc = location[vd];
+						K::Point_3 loc2 = location[vd2];
 
-					//vertex merge
-					vertex_descriptor new_vd = CGAL::Euler::collapse_edge(first_mesh.edge(first_mesh.halfedge(vd, vd2)), first_mesh);
+						//vertex merge
+						vertex_descriptor new_vd = CGAL::Euler::collapse_edge(first_mesh.edge(first_mesh.halfedge(vd2, vd)), first_mesh);
 
-					count++;
-					//CGAL::Euler::join_vertex(first_mesh.halfedge(vd2, vd), first_mesh);
+						count++;
 
+						K::Point_3 point = first_mesh.point(new_vd);
+						if (!cut_plane.has_on(point)) {
+							first_mesh.point(new_vd) = cut_plane.projection(point);
+						}
 
-					K::Point_3 point = first_mesh.point(new_vd);
-					if (!cut_plane.has_on(point)) {
-						first_mesh.point(new_vd) = cut_plane.projection(point);
+						breakOut = true;
+						break;
 					}
-					//if the source is lower than the target assign its z coordinate to target.
-					//if (loc[2] > loc2[2]) {
-					//	first_mesh.point(new_vd) = K::Point_3(loc[0], loc[1], loc2[2]);
-					//}
-					//repeat once more for the current vertex because of merge
-					vb--;
+				} while (vbegin != done);
+
+				if (breakOut) {
+					first_mesh.collect_garbage();
 					break;
 				}
-			} while (vbegin != done);
+			}
+			if (breakOut) {
+				breakOut = false;
+			}
+			else {
+				break;
+			}
 		}
+		
 		first_mesh.collect_garbage();
 
 		//remove triangles where two edges are on the boundary 
@@ -438,7 +574,6 @@ namespace ae{
 				if (first_mesh.null_face() == first_mesh.face(first_mesh.opposite(current)))
 				{
 					if (isOnBoundary) {
-						std::cout << "second boundary edge" << std::endl;
 						//first_mesh.remove_face(fd);
 						CGAL::Euler::remove_face(current, first_mesh);
 						break;
@@ -464,39 +599,34 @@ namespace ae{
 	}
 
 	//removes needle triangles based on aspect ratio and area threshold
-	Mesh boolean_interface::removeDegenFaces(Mesh mesh, float threshold, K::Plane_3 cut_plane) {
+	Mesh boolean_interface::removeNeedleTriangles(Mesh mesh, float threshold, K::Plane_3 cut_plane) {
 		for (face_descriptor fd : mesh.faces()) {
-			std::vector<float> lengths = boolean_interface::getEdgeLengths(mesh.halfedge(fd), mesh);
-			if (lengths.size() == 3)
-			{
-				float aspectRatio = boolean_interface::triangleAspectRatio(fd, mesh);
+			
+			float aspectRatio = boolean_interface::triangleAspectRatio(fd, mesh);
 
-				float area = CGAL::Polygon_mesh_processing::face_area(fd, mesh);
+			halfedge_descriptor current = mesh.halfedge(fd);
+			K::Point_3 p1 = mesh.point(mesh.target(current));
+			//current = mesh.next(current);
+			//K::Point_3 p2 = mesh.point(mesh.target(current));
+			//current = mesh.next(current);
+			//K::Point_3 p3 = mesh.point(mesh.target(current));
+			K::Point_3 p2 = mesh.point(mesh.source(current));
 
-				halfedge_descriptor current = mesh.halfedge(fd);
-				K::Point_3 p1 = mesh.point(mesh.target(current));
-				current = mesh.next(current);
-				K::Point_3 p2 = mesh.point(mesh.target(current));
-				current = mesh.next(current);
-				K::Point_3 p3 = mesh.point(mesh.target(current));
+			bool onPlane = (cut_plane.has_on(p1) && cut_plane.has_on(p2));
 
-				bool sameZ = (cut_plane.has_on(p1) && cut_plane.has_on(p2) && cut_plane.has_on(p3));
+			std::cout << "aspectRatio: " << aspectRatio << std::endl;
 
-				std::cout << "aspectRatio: " << aspectRatio << "area: " << area << "\n";
-				if (std::abs(aspectRatio) > 50000 && area < 80.0f && sameZ) {
+			if (std::abs(aspectRatio) > threshold && !onPlane) {
 
-					CGAL::Euler::remove_face(mesh.halfedge(fd), mesh);
-					std::cout << "remove face\n";
+				CGAL::Euler::join_face(mesh.halfedge(fd), mesh);
+				std::cout << "removed face\n";
 
-				}
 			}
-			else {
-				std::cerr << "removeDegenFaces(): Not a valid triangle" << std::endl;
-			}
+			
 		}
 		mesh.collect_garbage();
-		std::cout << "Degenerate triangles removed\n";
-		std::ofstream output("../out/3D/removed_degeneratedTris.off");
+		std::cout << "Needle triangles removed\n";
+		std::ofstream output("../out/3D/removed_needleTris.off");
 		output.precision(17);
 		output << mesh;
 		output.close();
@@ -564,4 +694,14 @@ void __stdcall _triangulateCut(ae::boolean_interface* g, char* first, float t, f
 void __stdcall _merge(ae::boolean_interface * g, char* first, float t, float x, float y, float z, float o_x, float o_y, float o_z)
 {
 	g->merge(std::string(first), t, x, y, z, o_x, o_y, o_z);
+}
+
+void __stdcall _approximate(ae::boolean_interface* g, char* first)
+{
+	g->approximate(std::string(first));
+}
+
+void __stdcall _simplify(ae::boolean_interface* g, char* first, double stop_ratio)
+{
+	g->simplify(std::string(first), stop_ratio);
 }
