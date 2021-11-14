@@ -19,7 +19,7 @@ class HierarchicalMesh(object):
     """
     dirname = os.path.dirname(__file__)
 
-    def __init__(self, parent, meshes, meshProcessor):
+    def __init__(self, parent, meshes, meshProcessor, faces=50):
         """
         Initialises a hierarchical mesh.
         :param self: this
@@ -42,7 +42,7 @@ class HierarchicalMesh(object):
 
             # generates a papermesh for the loaded structures
             # and writes it to the disk as papermeshLevelTemp.stl and .off
-            self.mesh = self.generatePaperMesh()
+            self.mesh = self.generatePaperMesh(x=faces)
             self.setName(self.writePapermeshStlAndOff("Temp"))
 
         # no structures thus anchor of the tree
@@ -384,7 +384,7 @@ class HierarchicalMesh(object):
             child.renderPaperMeshes(renderer)
 
 
-    def generatePaperMesh(self):
+    def generatePaperMesh(self,x=50):
 
         meshes = [m.mesh for m in self.meshes]
         polysAppended = util.appendMeshes(meshes)
@@ -404,7 +404,10 @@ class HierarchicalMesh(object):
         inPath = os.path.join(self.dirname, "../out/3D/pre_approximate.stl")
         outPath = os.path.join(self.dirname, "../out/3D/pre_approximate.off")
         util.meshioIO(inPath,outPath)
-        boolean_interface.Boolean_Interface().simplify(outPath,0.012) #0.017 -> about 52, 0.012 -> ca 40 faces in the resulting mesh
+
+        threshold = 0.00032*x-0.00039
+        # 0.017 -> about 52, 0.012 -> ca 40 faces in the resulting mesh
+        boolean_interface.Boolean_Interface().simplify(outPath,threshold)
 
         outPath = os.path.join(self.dirname, "../out/3D/simplified.stl")
         inPath = os.path.join(self.dirname, "../out/3D/simplified.off")
@@ -611,23 +614,23 @@ class HierarchicalMesh(object):
             # if there are multiple pieces
             if j < 0:
                 dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
-                projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), textureIdx, resolution)
+                projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), textureIdx + "_" + str(i), resolution)
                 # createUnfoldedPaperMesh is deprecated but still used for the previewTexture
-                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetab, textureIdx)
+                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetab, textureIdx  + "_" + str(i))
             # if the papermesh is complete
             else:
                 map_innerMesh_to_cutPlane = self.create_projection_dictionary_for_cutout()
                 dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor, hull = self.cut_boundingBox(actor.GetMapper().GetInput(),j), map = map_innerMesh_to_cutPlane)
                 #dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
-                projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), textureIdx, resolution)
+                projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), textureIdx + "_" + str(i), resolution)
                 # createUnfoldedPaperMesh is deprecated but still used for the previewTexture
-                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetabs[j], textureIdx)
+                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetabs[j], textureIdx + "_" + str(i))
 
             if j < 0:
-                front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile, textureIdx,
+                front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile, textureIdx + "_" + str(i),
                                             projection.GetMapper().GetInput().GetPointData().GetTCoords())
             else:
-                front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j], textureIdx,
+                front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j], textureIdx + "_" + str(i),
                                             projection.GetMapper().GetInput().GetPointData().GetTCoords())
 
             previewTexture = projector.mask(util.VtkToNp(previewTexture))
@@ -654,7 +657,6 @@ class HierarchicalMesh(object):
         filename = os.path.join(self.dirname, "../out/2D/unfolding{}.png".format(textureIdx))
         dy, dx, dz = previousFrontOutput.shape
         util.writeImage(util.NpToVtk(previousFrontOutput, dx, dy, dz), filename)
-
 
         # Set Texture for preview
         texture = vtk.vtkTexture()
@@ -685,7 +687,6 @@ class HierarchicalMesh(object):
         planes = [self.cutPlane, invPlane]
         hullPieces = self.meshProcessor.cutMeshWithPlanes(hull.GetOutput(), planes, None)
         fillHoles = vtk.vtkFillHolesFilter()
-        print(i)
         fillHoles.SetInputData(hullPieces[i])
         fillHoles.SetHoleSize(10000.0)
         fillHoles.Update()
@@ -713,7 +714,6 @@ class HierarchicalMesh(object):
                         dictionary[points.GetPoint(i)] = projected
                         newPoints.InsertNextPoint(projected)
             else:
-
                 # support also cut inner meshes or does unfolded actor remain unchanged after cutting
                 poly = child.unfoldedActor.GetMapper().GetInput()
                 points = poly.GetPoints()
@@ -792,12 +792,12 @@ class HierarchicalMesh(object):
         for debugging purposes.
         '''
         if self.parent:
-            directory = os.path.join(self.dirname, r"../out/3D")
+            directory = os.path.join(self.dirname, r"../out/3D/unfolded")
             unfoldedString = ""
             for filename in os.listdir(directory):
                 if hasattr(self, "meshPieces"):
                     for i in range(len(self.meshPieces)):
-                        if filename == os.path.join(self.dirname, "model{}.obj".format(self.getChildIdx() + "_" + str(i))):
+                        if filename == "model{}.obj".format(self.getChildIdx() + "_" + str(i)):
                             mesh = util.readObj(os.path.join(directory, filename))
                             mapper = vtk.vtkPolyDataMapper()
                             mapper.SetInputData(mesh)
@@ -807,15 +807,15 @@ class HierarchicalMesh(object):
                             self.unfoldedActors.append(actor)
                             unfoldedString += "Unfolded, "
                             self.modelFiles.append(filename)
-                        elif filename == os.path.join(self.dirname,"gluetabs{}.obj".format(self.getChildIdx() + "_" + str(i))):
+                        elif filename == "gluetabs{}.obj".format(self.getChildIdx() + "_" + str(i)):
                             mesh = util.readObj(os.path.join(directory, filename))
                             self.gluetabs.append(mesh)
                             self.gluetabFiles.append(filename)
-                        elif os.path.join(self.dirname, "gluetabs_mirrored{}.obj".format(self.getChildIdx() + "_" + str(i))):
+                        elif filename == "gluetabs_mirrored{}.obj".format(self.getChildIdx() + "_" + str(i)):
                             self.mirrorgtFiles.append(filename)
 
                 else:
-                    if filename == os.path.join(self.dirname, "model{}.obj".format(self.getChildIdx())):
+                    if filename == "model{}.obj".format(self.getChildIdx()):
                         mesh = util.readObj(os.path.join(directory, filename))
                         mapper = vtk.vtkPolyDataMapper()
                         mapper.SetInputData(mesh)
@@ -825,11 +825,11 @@ class HierarchicalMesh(object):
                         self.unfoldedActor = actor
                         self.modelFile = filename
                         unfoldedString = "Unfolded"
-                    elif filename == os.path.join(self.dirname, "gluetabs{}.obj".format(self.getChildIdx())):
+                    elif filename == "gluetabs{}.obj".format(self.getChildIdx()):
                         mesh = util.readObj(os.path.join(directory, filename))
                         self.gluetab = mesh
                         self.gluetabFile = filename
-                    elif filename == os.path.join(self.dirname, "gluetabs_mirrored{}.obj".format(self.getChildIdx())):
+                    elif filename == "gluetabs_mirrored{}.obj".format(self.getChildIdx()):
                         self.mirrorgtFile = filename
 
             self.label.setText(unfoldedString)

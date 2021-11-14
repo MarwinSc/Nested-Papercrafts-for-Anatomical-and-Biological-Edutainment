@@ -241,7 +241,7 @@ def cleanedMeshToMeshWithDoubleVertices(mesh):
     newGeometry.SetPolys(newCells)
 
     return newGeometry
-
+'''
 def projectMeshToBoundsAlongCubeNormals(mesh,hull = None, map = None):
     bounds = mesh.GetBounds()
     width = bounds[1] - bounds[0]
@@ -359,12 +359,12 @@ def projectMeshToBoundsAlongCubeNormals(mesh,hull = None, map = None):
         for j in range(6):
             if cubeNormals[j] == tempNormal:
                 cellOnCubeFace = True
-        '''
-        cellOnCubeFace = False
-        for j in range(3):
-            if newCellPoints[0][j] == newCellPoints[1][j] and newCellPoints[0][j] == newCellPoints[2][j] and newCellPoints[1][j] == newCellPoints[2][j]:
-                cellOnCubeFace = True
-        '''
+        
+        #cellOnCubeFace = False
+        #for j in range(3):
+        #    if newCellPoints[0][j] == newCellPoints[1][j] and newCellPoints[0][j] == newCellPoints[2][j] and newCellPoints[1][j] == newCellPoints[2][j]:
+        #        cellOnCubeFace = True
+        
         # if it doesn't, check which cube face normal matches the triangles normal the most, and project the triangle to that face
 
         if not cellOnCubeFace:
@@ -402,6 +402,118 @@ def projectMeshToBoundsAlongCubeNormals(mesh,hull = None, map = None):
                 cellLocator.IntersectWithLine(tempPoints[j], p2, tolerance, t, x, pcoords, subId)
 
                 newPoints.SetPoint(newCellPointIds[j],tuple(x))
+
+        newCells.InsertNextCell(triCell)
+
+    newGeometry.SetPoints(newPoints)
+    newGeometry.SetPolys(newCells)
+
+    return newGeometry
+'''
+
+def projectMeshToBoundsAlongCubeNormals(mesh,hull = None, map = None):
+    bounds = mesh.GetBounds()
+    width = bounds[1] - bounds[0]
+    depth = bounds[3] - bounds[2]
+    height = bounds[5] - bounds[4]
+
+    newGeometry = vtk.vtkPolyData()
+    newPoints = vtk.vtkPoints()
+    newCells = vtk.vtkCellArray()
+
+    if hull is None:
+        hull = vtk.vtkHull()
+        hull.SetInputData(mesh)
+        hull.AddCubeFacePlanes()
+        hull.Update()
+        hull = hull.GetOutput()
+
+    centersFilter = vtk.vtkCellCenters()
+    centersFilter.SetInputData(mesh)
+    centersFilter.VertexCellsOn()
+    centersFilter.Update()
+
+    cellLocator = vtk.vtkCellLocator()
+    cellLocator.SetDataSet(hull)
+    cellLocator.BuildLocator()
+
+    normalsFilter = vtk.vtkPolyDataNormals()
+    normalsFilter.SetInputData(mesh)
+    normalsFilter.ComputePointNormalsOff()
+    normalsFilter.ComputeCellNormalsOn()
+    normalsFilter.Update()
+    normals = normalsFilter.GetOutput().GetCellData().GetNormals()
+    normals_as_numpy = numpy_support.vtk_to_numpy(normals)
+
+    if hull is None:
+        cubeNormals = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (-1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)]
+    else:
+        cubeNormals = list_of_normals_without_duplicates(hull)
+
+    for i in range(mesh.GetNumberOfCells()):
+        points = mesh.GetCell(i).GetPoints()
+        triCell = vtk.vtkTriangle()
+
+        newCellPoints = []
+        newCellPointIds = []
+
+        #if all three points of the triangle are in the map just use the position from the map
+        project_using_map = False
+        if map is not None:
+            project_using_map = points.GetPoint(0) in map.keys() and points.GetPoint(1) in map.keys() and points.GetPoint(2) in map.keys()
+
+        if not project_using_map:
+            normal = normals.GetTuple(i)
+            largestSkalarp = -1000
+            indexLargestSkalarP = -1000
+            for k,n in enumerate(cubeNormals):
+                skalarp = (normal[0] * n[0]) + (normal[1] * n[1]) + (normal[2] * n[2])
+                if skalarp > largestSkalarp:
+                    largestSkalarp = skalarp
+                    indexLargestSkalarP = k
+            if largestSkalarp == -1000:
+                print("Error no cubenormal found.")
+                continue
+
+        for j in range(3):
+            point = points.GetPoint(j)
+            if project_using_map:
+
+                x = map[point]
+                newCellPoints.append(x)
+                pointId = newPoints.InsertNextPoint(tuple(x))
+                newCellPointIds.append(pointId)
+                triCell.GetPointIds().SetId(j, pointId)
+            else:
+
+                plane = vtk.vtkPlane()
+                plane.SetNormal(cubeNormals[indexLargestSkalarP])
+
+                # rewrite this
+                if cubeNormals[indexLargestSkalarP][0] != 0.0:
+                    if cubeNormals[indexLargestSkalarP][0] < 0:
+                        plane.SetOrigin(bounds[0],0.0,0.0)
+                    else:
+                        plane.SetOrigin(bounds[1],0.0,0.0)
+                if cubeNormals[indexLargestSkalarP][1] != 0.0:
+                    if cubeNormals[indexLargestSkalarP][1] < 0:
+                        plane.SetOrigin(0.0,bounds[2],0.0)
+                    else:
+                        plane.SetOrigin(0.0,bounds[3],0.0)
+                if cubeNormals[indexLargestSkalarP][2] != 0.0:
+                    if cubeNormals[indexLargestSkalarP][2] < 0:
+                        plane.SetOrigin(0.0,0.0,bounds[4])
+                    else:
+                        plane.SetOrigin(0.0,0.0,bounds[5])
+
+                x = [0.0, 0.0, 0.0]
+                plane.GeneralizedProjectPoint(point, x)
+
+                newCellPoints.append(x)
+
+                pointId = newPoints.InsertNextPoint(tuple(x))
+                newCellPointIds.append(pointId)
+                triCell.GetPointIds().SetId(j, pointId)
 
         newCells.InsertNextCell(triCell)
 

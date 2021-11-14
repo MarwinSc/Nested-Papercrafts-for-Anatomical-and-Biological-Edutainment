@@ -135,6 +135,9 @@ class Ui_MainWindow(object):
 
         addFileButton = QtWidgets.QPushButton("Add Mesh")
 
+        facesTextfield = QtWidgets.QLineEdit()
+        facesTextfield.setText("50")
+
         def getFile():
             dlg = QtWidgets.QFileDialog()
             dlg.setFileMode(QtWidgets.QFileDialog.ExistingFiles)
@@ -144,7 +147,11 @@ class Ui_MainWindow(object):
             dlg.setNameFilter("STL (*.stl)")
 
             if dlg.exec_():
-                addMesh(dlg.selectedFiles())
+                try:
+                    faces = int(facesTextfield.text())
+                except:
+                    faces = 50
+                addMesh(dlg.selectedFiles(),faces=faces)
 
             self.vtkWidget.GetRenderWindow().Render()
 
@@ -426,6 +433,7 @@ class Ui_MainWindow(object):
         layoutLeft.addWidget(debugBox)
 
         layoutRight.addWidget(addFileButton)
+        layoutRight.addWidget(facesTextfield)
         layoutRight.addWidget(directImportPapermeshButton)
 
 
@@ -471,7 +479,7 @@ class Ui_MainWindow(object):
 
             self.meshGroups.append(meshGroupLayout)
 
-        def addMesh(names):
+        def addMesh(names,faces=50):
 
             meshes = []
             for i,name in enumerate(names):
@@ -479,7 +487,7 @@ class Ui_MainWindow(object):
                 mesh = ProjectionStructure(name, self.numberOfLoadedStructures)
                 meshes.append(mesh)
 
-            hierarchicalMesh = org.addMesh(meshes)
+            hierarchicalMesh = org.addMesh(meshes,faces)
             hierarchicalMesh.label = QtWidgets.QLabel("Not Unfolded")
 
             meshGroupBox = QtWidgets.QGroupBox()

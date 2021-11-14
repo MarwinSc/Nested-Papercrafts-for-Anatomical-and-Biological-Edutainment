@@ -152,11 +152,11 @@ class Organizer():
         self.finish()
 
 
-    def addMesh(self, meshes):
+    def addMesh(self, meshes, faces=50):
         '''
         Adds a new hierarchicalMesh object to the hierarchy.
         '''
-        newHierarchicalMesh = HierarchicalMesh(None,meshes,self.meshProcessor)
+        newHierarchicalMesh = HierarchicalMesh(None,meshes,self.meshProcessor,faces)
         self.hierarchical_mesh_anchor.add(newHierarchicalMesh)
         return newHierarchicalMesh
 
