@@ -7,6 +7,7 @@ from projectionStructure import ProjectionStructure
 import random
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from viewpointselection.app import ViewPointComputation
+import time
 
 class Ui_MainWindow(object):
 
@@ -28,11 +29,6 @@ class Ui_MainWindow(object):
         self.vtkWidget = QVTKRenderWindowInteractor(self.centralWidget)
         self.gridlayout.setSpacing(3)
         self.numberOfLoadedStructures = 0
-        self.meshGroups = []
-
-        ##deprecated (For flattening)
-        self.pickedIds = [[[]],[[]],[[]]]
-        self.countOfPickedRegions = 0
 
         #org.clearOutputDirectory()
 
@@ -197,25 +193,37 @@ class Ui_MainWindow(object):
         saveVPtoImageButton.clicked.connect(onSaveVpToImage)
 
         def onUnfoldPaperMesh():
+
+            t = time.time()
+
             try:
                 iterations = int(unfoldIterationsTextfield.text())
             except:
                 iterations = 100000
             org.unfoldPaperMeshPass(iterations)
+
+            print("time unfolding", time.time()-t)
+
             self.vtkWidget.update()
 
         unfoldPaperMeshButton = QtWidgets.QPushButton("Unfold Papermesh")
         unfoldPaperMeshButton.clicked.connect(onUnfoldPaperMesh)
 
         resolutionWidth = QtWidgets.QLineEdit()
-        resolutionWidth.setText("500")
+        resolutionWidth.setText("2000")
 
         def onProjectPerTriangle():
+
+            t = time.time()
+
             try:
                 width = int(resolutionWidth.text())
             except:
                 width = 500
             org.project(resolution = [width, width])
+
+            print("time projection", time.time() - t)
+
             #org.projectPassTemp()
             if renderPaperMeshesButton.isChecked():
                 org.hierarchical_mesh_anchor.renderPaperMeshes(ren)
@@ -290,14 +298,26 @@ class Ui_MainWindow(object):
 
         def onEntropy():
 
+            t = time.time()
+
             hl = org.hierarchical_mesh_anchor.toActorList()
             window = ViewPointComputation(hl,openWindow=False)
             viewpoints, bounds = window.getMaxViewPoints_AndBounds()
+
+            print("time viewpoint calculation", time.time()-t)
+
+            t = time.time()
+
             #org.renderCutPlanes(viewpoints,bounds)
             org.cutHM(viewpoints, bounds, convexHull_cutout_checkbox.isChecked())
 
-            self.vtkWidget.update()
-            onRenderPaperMeshes()
+            print("time cutting", time.time()-t)
+
+            ren.RemoveAllViewProps()
+            org.hierarchical_mesh_anchor.renderPaperMeshes(ren)
+            if renderStructuresButton.isChecked():
+                org.hierarchical_mesh_anchor.renderStructures(ren)
+            self.vtkWidget.GetRenderWindow().Render()
 
         entropyButton.clicked.connect(onEntropy)
 
@@ -319,6 +339,10 @@ class Ui_MainWindow(object):
         upperThreshold_Brightening_slider.setRange(0,90)
         upperThreshold_Brightening_slider.setValue(60)
 
+        generateTestDataButton = QtWidgets.QPushButton("Export Test Data")
+        def onGenerateTestData():
+            org.generateStabilityTestData()
+        generateTestDataButton.clicked.connect(onGenerateTestData)
         """
         Adding UI elements to their respective container.
         """
@@ -373,8 +397,8 @@ class Ui_MainWindow(object):
 
         previewGroupLayout.addWidget(multiplyingButton)
         previewGroupLayout.addWidget(checkboxGroup)
-        previewGroupLayout.addWidget(sliderGroup)
         previewGroupLayout.addWidget(filterButton)
+        previewGroupLayout.addWidget(sliderGroup)
         previewGroupLayout.setSizeConstraint(QtWidgets.QLayout.SetMinAndMaxSize)
 
         #ViewGroup
@@ -383,9 +407,17 @@ class Ui_MainWindow(object):
         camGroup.setLayout(layoutCg)
 
         layoutCg.addWidget(resetCameraButton)
-        layoutCg.addWidget(dpGroup)
-        layoutCg.addWidget(imageName)
-        layoutCg.addWidget(saveVPtoImageButton)
+        #layoutCg.addWidget(dpGroup)
+
+        saveImageGroup = QtWidgets.QGroupBox()
+        saveImageGroupLayout = QtWidgets.QHBoxLayout()
+        saveImageGroup.setLayout(saveImageGroupLayout)
+
+        saveImageGroupLayout.addWidget(saveVPtoImageButton)
+        saveImageGroupLayout.addWidget(imageName)
+
+
+        layoutCg.addWidget(saveImageGroup)
 
         renderBox = QtWidgets.QGroupBox()
         renderBoxLayout = QtWidgets.QHBoxLayout()
@@ -402,13 +434,31 @@ class Ui_MainWindow(object):
         paperCreationBox = QtWidgets.QGroupBox()
         paperCreationLayout = QtWidgets.QVBoxLayout()
         paperCreationBox.setLayout(paperCreationLayout)
-        paperCreationLayout.addWidget(entropyButton)
-        paperCreationLayout.addWidget(convexHull_cutout_checkbox)
 
-        paperCreationLayout.addWidget(unfoldPaperMeshButton)
-        paperCreationLayout.addWidget(unfoldIterationsTextfield)
-        paperCreationLayout.addWidget(projectPerTriangle)
-        paperCreationLayout.addWidget(resolutionWidth)
+        cuttingBox= QtWidgets.QGroupBox()
+        cuttingLayout = QtWidgets.QHBoxLayout()
+        cuttingBox.setLayout(cuttingLayout)
+
+        cuttingLayout.addWidget(entropyButton)
+        cuttingLayout.addWidget(convexHull_cutout_checkbox)
+
+        unfoldingBox= QtWidgets.QGroupBox()
+        unfoldingLayout = QtWidgets.QHBoxLayout()
+        unfoldingBox.setLayout(unfoldingLayout)
+
+        unfoldingLayout.addWidget(unfoldPaperMeshButton)
+        unfoldingLayout.addWidget(unfoldIterationsTextfield)
+
+        projectionBox= QtWidgets.QGroupBox()
+        projectionLayout = QtWidgets.QHBoxLayout()
+        projectionBox.setLayout(projectionLayout)
+
+        projectionLayout.addWidget(projectPerTriangle)
+        projectionLayout.addWidget(resolutionWidth)
+
+        paperCreationLayout.addWidget(cuttingBox)
+        paperCreationLayout.addWidget(unfoldingBox)
+        paperCreationLayout.addWidget(projectionBox)
 
         #Insert Groups
         layoutLeft.addWidget(camGroup)
@@ -429,11 +479,18 @@ class Ui_MainWindow(object):
         debugBox_Layout.addWidget(writeUnfoldedButton)
         debugBox_Layout.addWidget(importUnfoldedButton)
         #debugBox_Layout.addWidget(importAnchorPapermeshButton)
+        debugBox_Layout.addWidget(generateTestDataButton)
 
-        layoutLeft.addWidget(debugBox)
+        #layoutLeft.addWidget(debugBox)
 
-        layoutRight.addWidget(addFileButton)
-        layoutRight.addWidget(facesTextfield)
+
+        addMeshGroup = QtWidgets.QGroupBox()
+        addMeshGroupLayout = QtWidgets.QHBoxLayout()
+        addMeshGroup.setLayout(addMeshGroupLayout)
+
+        addMeshGroupLayout.addWidget(addFileButton)
+        addMeshGroupLayout.addWidget(facesTextfield)
+        layoutRight.addWidget(addMeshGroup)
         layoutRight.addWidget(directImportPapermeshButton)
 
 
@@ -476,8 +533,6 @@ class Ui_MainWindow(object):
                 org.hierarchical_mesh_anchor.renderStructures(ren)
             if renderPaperMeshesButton.isChecked():
                 org.hierarchical_mesh_anchor.renderPaperMeshes(ren)
-
-            self.meshGroups.append(meshGroupLayout)
 
         def addMesh(names,faces=50):
 

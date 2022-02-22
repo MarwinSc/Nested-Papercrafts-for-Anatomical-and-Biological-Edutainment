@@ -448,7 +448,7 @@ def projectMeshToBoundsAlongCubeNormals(mesh,hull = None, map = None):
     if hull is None:
         cubeNormals = [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (-1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)]
     else:
-        cubeNormals = list_of_normals_without_duplicates(hull)
+        cubeNormals, centerMap = list_of_normals_without_duplicates(hull)
 
     for i in range(mesh.GetNumberOfCells()):
         points = mesh.GetCell(i).GetPoints()
@@ -488,8 +488,10 @@ def projectMeshToBoundsAlongCubeNormals(mesh,hull = None, map = None):
 
                 plane = vtk.vtkPlane()
                 plane.SetNormal(cubeNormals[indexLargestSkalarP])
+                plane.SetOrigin(centerMap[cubeNormals[indexLargestSkalarP]])
 
                 # rewrite this
+                '''
                 if cubeNormals[indexLargestSkalarP][0] != 0.0:
                     if cubeNormals[indexLargestSkalarP][0] < 0:
                         plane.SetOrigin(bounds[0],0.0,0.0)
@@ -505,7 +507,7 @@ def projectMeshToBoundsAlongCubeNormals(mesh,hull = None, map = None):
                         plane.SetOrigin(0.0,0.0,bounds[4])
                     else:
                         plane.SetOrigin(0.0,0.0,bounds[5])
-
+                '''
                 x = [0.0, 0.0, 0.0]
                 plane.GeneralizedProjectPoint(point, x)
 
@@ -529,13 +531,26 @@ def list_of_normals_without_duplicates(mesh):
     normalsFilter.Update()
     normals = normalsFilter.GetOutput().GetCellData().GetNormals()
 
+    centersFilter = vtk.vtkCellCenters()
+    centersFilter.SetInputData(mesh)
+    centersFilter.VertexCellsOn()
+    centersFilter.Update()
+    centers = centersFilter.GetOutput()
+
     whitoutDuplicates = []
+    centersMap = {}
     for i in range(normals.GetNumberOfTuples()):
         temp = (round(normals.GetTuple(i)[0],5), round(normals.GetTuple(i)[1],5), round(normals.GetTuple(i)[2],5))
         if temp not in whitoutDuplicates:
             whitoutDuplicates.append(temp)
+            centersMap[temp] = centers.GetPoint(i)
+        else:
+            center = centersMap[temp]
+            centersMap[temp] = ((center[0] + centers.GetPoint(i)[0])/2.0,
+                                (center[1] + centers.GetPoint(i)[1]) / 2.0,
+                                (center[2] + centers.GetPoint(i)[2]) / 2.0)
 
-    return whitoutDuplicates
+    return whitoutDuplicates,centersMap
 
 def projectMeshFromOriginToCubeBounds(mesh):
 
@@ -742,3 +757,74 @@ def calcMeshNormals(polydata):
     normals.SetInputData(polydata)
     normals.Update()
     return normals.GetOutput()
+
+def getMapFromUncleanedToCleaned(polydata):
+    '''
+    clean's a mesh and additionally returns a list containing lists of size 3, in which the first two elements are ID's
+    of duplicated lines in the original polydata and the last element is the corresponding ID in the cleaned polydata.
+    '''
+
+    vertexLocation_to_id_map = {}
+    points = polydata.GetPoints()
+    for i in range(polydata.GetNumberOfPoints()):
+        p = [0.0,0.0,0.0]
+        points.GetPoint(i,p)
+        p=tuple(p)
+        if p in vertexLocation_to_id_map.keys():
+            vertexLocation_to_id_map[p].append(i)
+        else:
+            vertexLocation_to_id_map[p] = [i]
+
+    extract_edges = vtk.vtkExtractEdges()
+    extract_edges.SetInputData(polydata)
+    extract_edges.Update()
+    edges = extract_edges.GetOutput()
+
+    #check which lines are duplicates
+    lineLocations_to_id_map = {}
+    for i in range(edges.GetNumberOfLines()):
+        point1_1 = edges.GetCell(i).GetPoints().GetPoint(0)
+        point1_2 = edges.GetCell(i).GetPoints().GetPoint(1)
+        points1 = point1_1 + point1_2
+        points1 = tuple(sorted(points1))
+
+        if points1 in lineLocations_to_id_map.keys():
+            lineLocations_to_id_map[points1].append(i)
+        else:
+            lineLocations_to_id_map[points1] = [i]
+
+    #check which lines of the cleaned polymesh are similar to the duplicated lines
+    cleaned = cleanMesh(polydata)
+    extract_edges = vtk.vtkExtractEdges()
+    extract_edges.SetInputData(cleaned)
+    extract_edges.Update()
+    edges = extract_edges.GetOutput()
+    for i in range(edges.GetNumberOfLines()):
+        point1_1 = edges.GetCell(i).GetPoints().GetPoint(0)
+        point1_2 = edges.GetCell(i).GetPoints().GetPoint(1)
+        points1 = point1_1 + point1_2
+        points1 = tuple(sorted(points1))
+
+        if points1 in lineLocations_to_id_map.keys():
+            lineLocations_to_id_map[points1].append(i)
+        else:
+            print("How can that be?")
+
+    return cleanMesh(polydata), list(lineLocations_to_id_map.values())#list(vertexLocation_to_id_map.values())
+
+def stretchColorScalarArray(scalars,correspondance_list):
+    '''
+    given the list of the method getMapFromUncleanedToCleaned() above, maps scalars from the cleaned polydata to the
+    uncleaned polydata containing duplicates
+    '''
+    new_scalars = vtk.vtkUnsignedCharArray()
+    new_scalars.SetNumberOfComponents(3)
+    new_scalars.SetNumberOfTuples(scalars.GetNumberOfTuples() * 2)
+
+    for i in range(scalars.GetNumberOfTuples()):
+        scalar = scalars.GetTuple3(correspondance_list[i][2])
+
+        new_scalars.SetTuple3(correspondance_list[i][0], scalar[0],scalar[1],scalar[2])
+        new_scalars.SetTuple3(correspondance_list[i][1], scalar[0],scalar[1],scalar[2])
+
+    return new_scalars

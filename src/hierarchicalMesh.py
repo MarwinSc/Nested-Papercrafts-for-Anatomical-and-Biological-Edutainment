@@ -5,9 +5,11 @@ import vtkmodules.all as vtk
 import util
 import projector
 from imageProcessing import ImageProcessor
+import meshProcessing
 from mu3d.mu3dpy.mu3d import Graph
 from boolean import boolean_interface
 from PyQt5 import QtWidgets
+import time
 
 
 class HierarchicalMesh(object):
@@ -32,6 +34,8 @@ class HierarchicalMesh(object):
         self.parent = parent
         self.meshProcessor = meshProcessor
         self.imageProcessor = ImageProcessor()
+        self.matlab_colors = [[0.5,0.5,0.5],[0.0, 0.4470, 0.7410],[0.8500, 0.3250, 0.0980],[0.4940, 0.1840, 0.5560], [0.4660, 0.6740, 0.1880 ], [0.9290, 0.6940, 0.1250]]
+
 
         # new sub node of the tree
         if meshes:
@@ -59,6 +63,9 @@ class HierarchicalMesh(object):
         self.modelFiles = []
         self.gluetabFiles = []
         self.mirrorgtFiles = []
+
+        self.edge_actors = []
+
 
     def setName(self, filename):
         '''
@@ -167,7 +174,9 @@ class HierarchicalMesh(object):
 
             try:
                 self.boolThenCut(convexHull_cutout)
-                #self.cutThenBool()
+                for child in self.children:
+                    child.scalePaperMeshDown(0.96)
+
             except Exception:
                 raise Exception("Failure on Cut")
 
@@ -175,37 +184,68 @@ class HierarchicalMesh(object):
             for piece in self.meshPieces:
                 self.updateUiButtons(piece)
 
+            for actor in self.edge_actors:
+                self.updateUiButtons(actor)
+
         # if all children are cut out save it and call boolean for children
         for child in self.children:
             child.recursive_difference(convexHull_cutout)
 
-    def boolThenCut(self, convexCutout = False):
+    def boolThenCut(self, convexCutout = False, inner_meshes_intersecting = False):
         '''
         First calculates the difference with the inner mesh, then cuts the given papermesh open and uses boolean.cpp methods to mesh the resulting two boundary loops.
         '''
 
         final_mesh = trimesh.load(self.file)
 
-        if convexCutout:
-            #hull = vtk.vtkHull()
-            #hull.SetInputData(self.children[0].papermesh)
-            #hull.AddCubeFacePlanes()
-            #hull.AddRecursiveSpherePlanes(2)
-            #hull.Update()
-            delauney = vtk.vtkDelaunay3D()
-            delauney.SetInputData(self.children[0].papermesh)
-            delauney.Update()
-            surfaceFilter = vtk.vtkDataSetSurfaceFilter()
-            surfaceFilter.SetInputData(delauney.GetOutput())
-            surfaceFilter.Update()
+        if inner_meshes_intersecting:
+            if len(self.children) > 1:
+                append = self.appendPreviousChildren(len(self.children)+1)
+                delauney = vtk.vtkDelaunay3D()
+                delauney.SetInputData(append)
+                delauney.Update()
+                surfaceFilter = vtk.vtkDataSetSurfaceFilter()
+                surfaceFilter.SetInputData(delauney.GetOutput())
+                surfaceFilter.Update()
+                util.writeStl(surfaceFilter.GetOutput(), "hull")
 
-            util.writeStl(surfaceFilter.GetOutput(),"hull")
+                filename = os.path.join(self.dirname, "../out/3D/hull.stl")
+                outPath = os.path.join(self.dirname, "../out/3D/hull.off")
+                util.meshioIO(filename,outPath)
+                boolean_interface.Boolean_Interface().simplify(outPath, 0.5)
+                inPath = os.path.join(self.dirname, "../out/3D/simplified.off")
+                util.meshioIO(inPath,filename)
 
-            tri_child = trimesh.load(os.path.join(self.dirname, "../out/3D/hull.stl"))
-        else:
-            tri_child = trimesh.load(self.children[0].file)
+                tri_child = trimesh.load(os.path.join(self.dirname, "../out/3D/hull.stl"))
+            else:
+                delauney = vtk.vtkDelaunay3D()
+                delauney.SetInputData(self.children[0].papermesh)
+                delauney.Update()
+                surfaceFilter = vtk.vtkDataSetSurfaceFilter()
+                surfaceFilter.SetInputData(delauney.GetOutput())
+                surfaceFilter.Update()
+
+                util.writeStl(surfaceFilter.GetOutput(), "hull")
+
+                tri_child = trimesh.load(os.path.join(self.dirname, "../out/3D/hull.stl"))
+
+        if not inner_meshes_intersecting:
+            if convexCutout:
+                delauney = vtk.vtkDelaunay3D()
+                delauney.SetInputData(self.children[0].papermesh)
+                delauney.Update()
+                surfaceFilter = vtk.vtkDataSetSurfaceFilter()
+                surfaceFilter.SetInputData(delauney.GetOutput())
+                surfaceFilter.Update()
+
+                util.writeStl(surfaceFilter.GetOutput(),"hull")
+
+                tri_child = trimesh.load(os.path.join(self.dirname, "../out/3D/hull.stl"))
+            else:
+                tri_child = trimesh.load(self.children[0].file)
         # final_mesh = final_mesh.difference(tri_child, engine='blender')
         #final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
+
         final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
 
         filename = os.path.join(self.dirname, "../out/3D/differenced_" + self.name)
@@ -250,8 +290,8 @@ class HierarchicalMesh(object):
         for i, path in enumerate(paths):
             normal = planes[i].GetNormal()
             origin = planes[i].GetOrigin()
-            #TODO should be the same value for the whole Hierarchy, but maybe relativ to the first node
-            threshold = 30.0 #avgDistance[i]/100.0
+
+            threshold = 15.0 #avgDistance[i]/100.0
             boolean_interface.Boolean_Interface().triangulateCut(paths[i], threshold, -1.0 * float(normal[0]),
                                                                  -1.0 * float(normal[1]), -1.0 * float(normal[2]),
                                                                  float(origin[0]), float(origin[1]), float(origin[2]))
@@ -259,24 +299,97 @@ class HierarchicalMesh(object):
             outPath = paths2[i]
             util.meshioIO(inPath, outPath)
 
-            #bool other children out of each piece
-            #TODO this has to be changed if we want to support multiple cuts per parent
-            for child in self.children[1:]:
-                final_mesh = trimesh.load(outPath)
-                tri_child = trimesh.load(child.file)
-                # final_mesh = final_mesh.difference(tri_child, engine='blender')
-                # final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
-                final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
-                final_mesh.export(outPath)
+            if not inner_meshes_intersecting:
+                #bool other children out of each piece
+                for i,child in enumerate(self.children[1:]):
+                    if convexCutout:
+                        child_mesh = util.readStl(child.file)
+                        delauney = vtk.vtkDelaunay3D()
+                        delauney.SetInputData(child_mesh)
+                        delauney.Update()
+                        surfaceFilter = vtk.vtkDataSetSurfaceFilter()
+                        surfaceFilter.SetInputData(delauney.GetOutput())
+                        surfaceFilter.Update()
+                        util.writeStl(surfaceFilter.GetOutput(), "hull")
+                        tri_child = trimesh.load(os.path.join(self.dirname, "../out/3D/hull.stl"))
+                        final_mesh = trimesh.load(inPath)
+                        final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
+                        final_mesh.export(outPath)
+                        if True:
+                            tempFileName = os.path.join(self.dirname, "../out/3D/pre_approximate.off")
+                            util.meshioIO(outPath, tempFileName)
+                            boolean_interface.Boolean_Interface().simplify(tempFileName, 0.7)
+                            inPath = os.path.join(self.dirname, "../out/3D/simplified.off")
+                            util.meshioIO(inPath, outPath)
+                    else:
+                        tri_child = trimesh.load(child.file)
+                        final_mesh = trimesh.load(inPath)
+                        # final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="blender")
+                        final_mesh = trimesh.boolean.difference([final_mesh, tri_child], engine="scad")
+                        final_mesh.export(outPath)
+
 
             mesh = util.readStl(outPath)
-
             mapper = vtk.vtkPolyDataMapper()
             mapper.SetInputData(mesh)
             actor = vtk.vtkActor()
             actor.SetMapper(mapper)
             actor.GetProperty().SetOpacity(0.15)
+
             self.meshPieces.append(actor)
+
+            self.edge_actors.append(self.renderValleyMountainEdgeScalars(actor))
+
+        if inner_meshes_intersecting:
+            for i, child in enumerate(self.children[:-1]):
+                tri_child = trimesh.load(child.file)
+                #appended, siblings_list = self.appendPreviousChildren(i+1)
+                for j, child_to_remove in enumerate(self.children[i:]):
+                    if child is not child_to_remove:
+                #tri_otherSameLevel = trimesh.load(os.path.join(self.dirname, "../out/3D/neighbourMeshes.stl"))
+                #child.scalePaperMeshDown(1.1)
+                #util.writeStl(child.papermesh, "temp")
+                #tri_otherSameLevel = trimesh.load(os.path.join(self.dirname, "../out/3D/temp.stl"))
+                        tri_sibling = trimesh.load(child_to_remove.file)
+                        try:
+                            tri_child = trimesh.boolean.difference([tri_child, tri_sibling], engine="scad")
+                        except:
+                            print("some went wrong on booling intersecting siblings")
+                filename = child.file
+                #name = os.path.join(self.dirname, "../out/3D/child.off")
+                tri_child.export(filename)
+
+                outPath = os.path.join(self.dirname, "../out/3D/pre_approximate.off")
+                util.meshioIO(filename,outPath)
+                boolean_interface.Boolean_Interface().simplify(outPath, 0.7)
+                inPath = os.path.join(self.dirname, "../out/3D/simplified.off")
+                outPath = filename
+                util.meshioIO(inPath,outPath)
+
+                newChildMesh = util.readStl(filename)
+                child.setAllMeshReferences(newChildMesh)
+
+    def appendPreviousChildren(self,i):
+        meshes = []
+        for j,child in enumerate(self.children):
+            if j != i:
+
+                #child.scalePaperMeshDown(1.05)
+
+                delauney = vtk.vtkDelaunay3D()
+                delauney.SetInputData(child.papermesh)
+                delauney.Update()
+                surfaceFilter = vtk.vtkDataSetSurfaceFilter()
+                surfaceFilter.SetInputData(delauney.GetOutput())
+                surfaceFilter.Update()
+
+                meshes.append(surfaceFilter.GetOutput())
+
+                #child.scalePaperMeshDown(0.95)
+
+        appended = util.appendMeshes(meshes)
+        util.writeStl(appended, "neighbourMeshes")
+        return appended
 
     def cutThenBool(self):
         '''
@@ -347,6 +460,7 @@ class HierarchicalMesh(object):
             actor = vtk.vtkActor()
             actor.SetMapper(mapper)
             actor.GetProperty().SetOpacity(0.15)
+
             self.meshPieces.append(actor)
 
     def renderStructures(self, renderer):
@@ -370,8 +484,14 @@ class HierarchicalMesh(object):
             for actor in self.unfoldedActors:
                 renderer.AddActor(actor)
 
+            for actor in self.edge_actors:
+                renderer.AddActor(actor)
+
         elif hasattr(self, "meshPieces"):
             for actor in self.meshPieces:
+                renderer.AddActor(actor)
+
+            for actor in self.edge_actors:
                 renderer.AddActor(actor)
 
         elif hasattr(self, "unfoldedActor"):
@@ -386,6 +506,8 @@ class HierarchicalMesh(object):
 
     def generatePaperMesh(self,x=50):
 
+        t = time.time()
+
         meshes = [m.mesh for m in self.meshes]
         polysAppended = util.appendMeshes(meshes)
 
@@ -397,7 +519,7 @@ class HierarchicalMesh(object):
         triangleFilter.SetInputData(hull.GetOutput())
         triangleFilter.Update()
 
-        mesh = util.subdivideMesh(triangleFilter.GetOutput(),4)
+        mesh = util.subdivideMesh(triangleFilter.GetOutput(),3)
         mesh = util.shrinkWrap(mesh, polysAppended)
 
         util.writeStl(mesh,"pre_approximate")
@@ -405,9 +527,8 @@ class HierarchicalMesh(object):
         outPath = os.path.join(self.dirname, "../out/3D/pre_approximate.off")
         util.meshioIO(inPath,outPath)
 
-        threshold = 0.00032*x-0.00039
-        # 0.017 -> about 52, 0.012 -> ca 40 faces in the resulting mesh
-        boolean_interface.Boolean_Interface().simplify(outPath,threshold)
+        number_of_faces = (3/2)*(x+2)
+        boolean_interface.Boolean_Interface().simplify(outPath,number_of_faces)
 
         outPath = os.path.join(self.dirname, "../out/3D/simplified.stl")
         inPath = os.path.join(self.dirname, "../out/3D/simplified.off")
@@ -415,99 +536,15 @@ class HierarchicalMesh(object):
 
         self.papermesh = util.cleanMesh(util.readStl(outPath))
 
-        '''
-        com = vtk.vtkCenterOfMass()
-        com.SetInputData(mesh)
-        com.Update()
-        com = com.GetCenter()
-
-        transform = vtk.vtkTransform()
-        transform.Translate(com[0],com[1],com[2])
-        transform.Scale(1.1, 1.1, 1.1)
-        transform.Translate(-com[0],-com[1],-com[2])
-        transform.Update()
-
-        scale = vtk.vtkTransformPolyDataFilter()
-        scale.SetTransform(transform)
-        scale.SetInputData(mesh)
-        scale.Update()
-        self.papermesh = scale.GetOutput()
-
-        '''
-
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(self.papermesh)
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
         actor.GetProperty().SetOpacity(0.15)
+
+        print("time mesh creation:", time.time()-t)
+
         return actor
-
-
-    '''
-    def generatePaperMesh(self, convex = False, adaptive = False):
-        
-        #Generates a papermesh for the loaded structures in self.meshes.
-        #As a side effect the papermesh itself is saved to self.papermesh.
-        #:return: A vtk actor of the generated papermesh.
-        
-        meshes = [m.mesh for m in self.meshes]
-        polysAppended = util.appendMeshes(meshes)
-        hull = vtk.vtkHull()
-        hull.SetInputData(polysAppended)
-        hull.AddCubeFacePlanes()
-        hull.Update()
-        triangleFilter = vtk.vtkTriangleFilter()
-        triangleFilter.SetInputData(hull.GetOutput())
-        triangleFilter.Update()
-
-        mesh = util.subdivideMesh(triangleFilter.GetOutput())
-        mesh = util.shrinkWrap(mesh, polysAppended)
-
-        if adaptive:
-            #TODO if adaptive is used the edge length has to be based on the average edge length of the respective mesh
-            mesh = util.adaptiveSubdivideMesh(mesh, maxEdgeLength=30.0, numberOfTriangles=100, numberOfPasses=10)
-            mesh = util.shrinkWrap(mesh, polysAppended)
-            mesh = util.adaptiveSubdivideMesh(mesh, maxEdgeLength=15.0, numberOfTriangles=100, numberOfPasses=10)
-            mesh = util.shrinkWrap(mesh, polysAppended)
-
-
-        mesh = util.cleanMesh(mesh)
-
-        if convex:
-            delauney = vtk.vtkDelaunay3D()
-            delauney.SetInputData(mesh)
-            delauney.Update()
-            surfaceFilter = vtk.vtkDataSetSurfaceFilter()
-            surfaceFilter.SetInputData(delauney.GetOutput())
-            surfaceFilter.Update()
-            mesh = surfaceFilter.GetOutput()
-
-        self.papermesh = mesh
-
-        com = vtk.vtkCenterOfMass()
-        com.SetInputData(mesh)
-        com.Update()
-        com = com.GetCenter()
-
-        transform = vtk.vtkTransform()
-        transform.Translate(com[0],com[1],com[2])
-        transform.Scale(1.1, 1.1, 1.1)
-        transform.Translate(-com[0],-com[1],-com[2])
-        transform.Update()
-
-        scale = vtk.vtkTransformPolyDataFilter()
-        scale.SetTransform(transform)
-        scale.SetInputData(mesh)
-        scale.Update()
-        self.papermesh = scale.GetOutput()
-
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputData(self.papermesh)
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-        actor.GetProperty().SetOpacity(0.15)
-        return actor
-    '''
 
     def unfoldWholeHierarchy(self, iterations):
         '''
@@ -547,6 +584,15 @@ class HierarchicalMesh(object):
             self.gluetabFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs{}.obj".format(self.getChildIdx()))
             self.mirrorgtFile = os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored{}.obj".format(self.getChildIdx()))
 
+            model = util.readObj(self.modelFile)
+            bounds = model.GetBounds()
+            width = abs(bounds[1]) + abs(bounds[0])
+            height = abs(bounds[5]) + abs(bounds[4])
+            if width > height:
+                self.scale = width
+            else:
+                self.scale = height
+
     def unfoldPaperMeshPieces(self, iterations):
         '''
         Calls the mu3dUnfoldPaperMesh() method of the given meshProcessor and afterward the createDedicatedPaperMesh()
@@ -577,48 +623,70 @@ class HierarchicalMesh(object):
                 self.mirrorgtFiles.append(os.path.join(self.dirname, "../out/3D/unfolded/gluetabs_mirrored{}.obj".format(
                     self.getChildIdx() + "_" + str(i))))
 
+                model = util.readObj(self.modelFiles[i])
+                bounds = model.GetBounds()
+                width = abs(bounds[1]) + abs(bounds[0])
+                height = abs(bounds[5]) + abs(bounds[4])
+                if width > height:
+                    scale = width
+                else:
+                    scale = height
+
+                if hasattr(self,"scale"):
+                    if scale > self.scale:
+                        self.scale = scale
+                else:
+                    self.scale = scale
             else:
                 unfoldedString += "Not Unfolded, "
         self.label.setText(unfoldedString)
 
-    def project(self, resolution):
+    def project(self, resolution, scale = 1):
         '''
         Projects all anatomical structures of the hierarchy onto their respective unfolded papermesh.
         Creating the unfolded paper template for each papermesh.
         '''
         if self.parent:
             self.clearUiButtons()
+
+            if self.getLevel() == 1:
+                scale = self.scale
+
             # creating unfoldings per mesh piece
             if hasattr(self, "meshPieces"):
                 for j, unfolded_piece in enumerate(self.unfoldedActors):
-                    unfolded_piece = self.project_helper(unfolded_piece, resolution, self.getChildIdx()+"_"+str(j), j)
+                    unfolded_piece = self.project_helper(unfolded_piece, resolution, self.getChildIdx()+"_"+str(j),scale ,j)
                     self.updateUiButtons(unfolded_piece)
                     print("Projected a hierarchy level.")
 
+                for actor in self.edge_actors:
+                    self.updateUiButtons(actor)
+
             # create single unfolding if mesh isn't cut
             else:
-                self.unfoldedActor = self.project_helper(self.unfoldedActor, resolution, self.getChildIdx())
+                self.unfoldedActor = self.project_helper(self.unfoldedActor, resolution, self.getChildIdx(),scale)
                 self.updateUiButtons(self.unfoldedActor)
                 print("Projected a hierarchy level.")
 
         self.getChildIdx()
         for child in self.children:
-            child.project(resolution)
+            child.project(resolution, scale)
 
-    def project_helper(self, actor, resolution, textureIdx, j=-1):
+    def project_helper(self, actor, resolution, textureIdx, scale, j=-1):
         '''
         Helper for projectMethod for either pieces of a cut mesh or an uncut papermesh.
         Handels calling the necessary methods for projection with a given actor and the meshes of the current hierarchical level.
         '''
         for i, mesh in enumerate(self.meshes):
-            # if there are multiple pieces
+            # if the papermesh is complete
             if j < 0:
                 dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
                 projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), textureIdx + "_" + str(i), resolution)
                 # createUnfoldedPaperMesh is deprecated but still used for the previewTexture
                 img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetab, textureIdx  + "_" + str(i))
-            # if the papermesh is complete
+            # if there are multiple pieces
             else:
+                mesh.cutMesh = self.meshProcessor.clipStructure(mesh.mesh,self.cutPlane,j)
                 map_innerMesh_to_cutPlane = self.create_projection_dictionary_for_cutout()
                 dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor, hull = self.cut_boundingBox(actor.GetMapper().GetInput(),j), map = map_innerMesh_to_cutPlane)
                 #dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
@@ -628,10 +696,10 @@ class HierarchicalMesh(object):
 
             if j < 0:
                 front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile, textureIdx + "_" + str(i),
-                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
+                                            projection.GetMapper().GetInput().GetPointData().GetTCoords(),scale,actor.GetMapper().GetInput())
             else:
                 front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j], textureIdx + "_" + str(i),
-                                            projection.GetMapper().GetInput().GetPointData().GetTCoords())
+                                            projection.GetMapper().GetInput().GetPointData().GetTCoords(),scale,actor.GetMapper().GetInput())
 
             previewTexture = projector.mask(util.VtkToNp(previewTexture))
             front_output = util.VtkToNp(front_output)
@@ -649,7 +717,12 @@ class HierarchicalMesh(object):
         # subtract the labelIDs rendering from the multiplied texture, masking front and back and save to disk
         previousFrontOutput = previousFrontOutput - util.VtkToNp(labelIDs_output)
 
-        previousFrontOutput, back_output = projector.mask(previousFrontOutput, util.VtkToNp(back_output))
+        #previousFrontOutput, back_output = projector.mask(previousFrontOutput, util.VtkToNp(back_output))
+        back_output = util.VtkToNp(back_output)
+
+        filename = os.path.join(self.dirname, "../out/2D/preview_texture{}.png".format(textureIdx))
+        dy, dx, dz = previousPreviewTexture.shape
+        util.writeImage(util.NpToVtk(previousPreviewTexture, dx, dy, dz), filename)
 
         filename = os.path.join(self.dirname, "../out/2D/unfolding_back{}.png".format(textureIdx))
         dy, dx, dz = back_output.shape
@@ -777,11 +850,11 @@ class HierarchicalMesh(object):
             if hasattr(self, "meshPieces"):
                 for i, unfolded_piece in enumerate(self.unfoldedActors):
                     util.writeObj(unfolded_piece.GetMapper().GetInput(),
-                                  "unfolded_{}_piece_{}".format(self.getChildIdx(), i))
-                    util.writeObj(self.gluetabs[i], "gluetabs_{}_piece_{}".format(self.getChildIdx(), i))
+                                  "unfolded/unfolded_{}_piece_{}".format(self.getChildIdx(), i))
+                    #util.writeObj(self.gluetabs[i], "unfolded/gluetabs_{}_piece_{}".format(self.getChildIdx(), i))
             else:
-                util.writeObj(self.unfoldedActor.GetMapper().GetInput(), "unfolded_{}".format(self.getChildIdx()))
-                util.writeObj(self.gluetab, "gluetabs_{}".format(self.getChildIdx()))
+                util.writeObj(self.unfoldedActor.GetMapper().GetInput(), "unfolded/unfolded_{}".format(self.getChildIdx()))
+                #util.writeObj(self.gluetab, "unfolded/gluetabs_{}".format(self.getChildIdx()))
 
         for child in self.children:
             child.writeAllUnfoldedMeshesInHierarchy()
@@ -797,7 +870,7 @@ class HierarchicalMesh(object):
             for filename in os.listdir(directory):
                 if hasattr(self, "meshPieces"):
                     for i in range(len(self.meshPieces)):
-                        if filename == "model{}.obj".format(self.getChildIdx() + "_" + str(i)):
+                        if filename == "unfolded_{}_piece_{}.obj".format(self.getChildIdx(), str(i)):
                             mesh = util.readObj(os.path.join(directory, filename))
                             mapper = vtk.vtkPolyDataMapper()
                             mapper.SetInputData(mesh)
@@ -806,16 +879,32 @@ class HierarchicalMesh(object):
                             actor.GetProperty().SetOpacity(0.5)
                             self.unfoldedActors.append(actor)
                             unfoldedString += "Unfolded, "
-                            self.modelFiles.append(filename)
+
                         elif filename == "gluetabs{}.obj".format(self.getChildIdx() + "_" + str(i)):
                             mesh = util.readObj(os.path.join(directory, filename))
                             self.gluetabs.append(mesh)
-                            self.gluetabFiles.append(filename)
+                            self.gluetabFiles.append(os.path.join(directory,filename))
                         elif filename == "gluetabs_mirrored{}.obj".format(self.getChildIdx() + "_" + str(i)):
-                            self.mirrorgtFiles.append(filename)
+                            self.mirrorgtFiles.append(os.path.join(directory, filename))
+                        elif filename == "model{}.obj".format(self.getChildIdx()+ "_" + str(i)):
+                            self.modelFiles.append(os.path.join(directory, filename))
+                            model = util.readObj(os.path.join(directory,filename))
+                            bounds = model.GetBounds()
+                            width = abs(bounds[1]) + abs(bounds[0])
+                            height = abs(bounds[5]) + abs(bounds[4])
+                            if width > height:
+                                scale = width
+                            else:
+                                scale = height
+
+                            if hasattr(self, "scale"):
+                                if scale > self.scale:
+                                    self.scale = scale
+                            else:
+                                self.scale = scale
 
                 else:
-                    if filename == "model{}.obj".format(self.getChildIdx()):
+                    if filename == "unfolded_{}.obj".format(self.getChildIdx()):
                         mesh = util.readObj(os.path.join(directory, filename))
                         mapper = vtk.vtkPolyDataMapper()
                         mapper.SetInputData(mesh)
@@ -823,14 +912,23 @@ class HierarchicalMesh(object):
                         actor.SetMapper(mapper)
                         actor.GetProperty().SetOpacity(0.5)
                         self.unfoldedActor = actor
-                        self.modelFile = filename
                         unfoldedString = "Unfolded"
                     elif filename == "gluetabs{}.obj".format(self.getChildIdx()):
                         mesh = util.readObj(os.path.join(directory, filename))
                         self.gluetab = mesh
-                        self.gluetabFile = filename
+                        self.gluetabFile = (os.path.join(directory,filename))
                     elif filename == "gluetabs_mirrored{}.obj".format(self.getChildIdx()):
-                        self.mirrorgtFile = filename
+                        self.mirrorgtFile = (os.path.join(directory,filename))
+                    elif filename == "model{}.obj".format(self.getChildIdx()):
+                        self.modelFile = (os.path.join(directory, filename))
+                        model = util.readObj(os.path.join(directory,filename))
+                        bounds = model.GetBounds()
+                        width = abs(bounds[1]) + abs(bounds[0])
+                        height = abs(bounds[5]) + abs(bounds[4])
+                        if width > height:
+                            self.scale = width
+                        else:
+                            self.scale = height
 
             self.label.setText(unfoldedString)
 
@@ -931,27 +1029,70 @@ class HierarchicalMesh(object):
         Adds the cuttingplanes to the respective level in the hierarchy.
         '''
         if self.parent:
-            plane = vtk.vtkPlane()
-            #x0, y0, z0 = (bds[self.getLevel() - 1][1] - abs(bds[self.getLevel() - 1][0])) / 2., (
-            #            bds[self.getLevel() - 1][3] - abs(bds[self.getLevel() - 1][2])) / 2., (
-            #                         bds[self.getLevel() - 1][5] - abs(bds[self.getLevel() - 1][4])) / 2.
-            meshes = []
-            for child in self.children:
-                meshes.append(child.papermesh)
-            if meshes:
-                mesh = util.appendMeshes(meshes)
-                com = vtk.vtkCenterOfMass()
-                com.SetInputData(mesh)
-                com.Update()
-                x0,y0,z0 = com.GetCenter()
+            if len(self.children) > 0:
+                plane = vtk.vtkPlane()
+                #x0, y0, z0 = (bds[self.getLevel() - 1][1] - abs(bds[self.getLevel() - 1][0])) / 2., (
+                #            bds[self.getLevel() - 1][3] - abs(bds[self.getLevel() - 1][2])) / 2., (
+                #                         bds[self.getLevel() - 1][5] - abs(bds[self.getLevel() - 1][4])) / 2.
+                idx = self.getLevel() - 1 + self.parent.children.index(self)
+                meshes = []
+                for child in self.children:
+                    meshes.append(child.papermesh)
+                if meshes:
+                    mesh = util.appendMeshes(meshes)
+                    com = vtk.vtkCenterOfMass()
+                    com.SetInputData(mesh)
+                    com.Update()
+                    x0,y0,z0 = com.GetCenter()
 
-                plane.SetOrigin(x0, y0, z0)
-                plane.SetNormal(viewpoints[self.getLevel() - 1][0], viewpoints[self.getLevel() - 1][1],
-                                viewpoints[self.getLevel() - 1][2])
-                self.cutPlane = plane
+                    plane.SetOrigin(x0, y0, z0)
+                    try:
+                        plane.SetNormal(viewpoints[idx][0], viewpoints[idx][1],viewpoints[idx][2])
+                    except:
+                        plane.SetNormal(viewpoints[idx-1][0], viewpoints[idx-1][1], viewpoints[idx-1][2])
+                    self.cutPlane = plane
 
         for child in self.children:
             child.addCutPlanes(viewpoints, bds)
+
+    def scalePaperMeshDown(self,factor):
+        if self.getLevel() > 1:
+
+            com = vtk.vtkCenterOfMass()
+            com.SetInputData(self.papermesh)
+            com.Update()
+            com = com.GetCenter()
+
+            transform = vtk.vtkTransform()
+            transform.Translate(com[0], com[1], com[2])
+            transform.Scale(factor,factor,factor)
+            transform.Translate(-com[0], -com[1], -com[2])
+            transform.Update()
+
+            scale = vtk.vtkTransformPolyDataFilter()
+            scale.SetTransform(transform)
+            scale.SetInputData(self.papermesh)
+            scale.Update()
+            self.papermesh = scale.GetOutput()
+
+            stlWriter = vtk.vtkSTLWriter()
+            stlWriter.SetFileName(self.file)
+            mesh = util.cleanMesh(self.papermesh)
+            stlWriter.SetInputData(mesh)
+            stlWriter.Write()
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputData(self.papermesh)
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetOpacity(0.15)
+
+            self.mesh = actor
+            self.clearUiButtons()
+            self.updateUiButtons(self.mesh)
+
+            for child in self.children:
+                child.scalePaperMeshDown(0.96)
 
     def setUpAdditionalUiElements(self):
         '''
@@ -981,3 +1122,104 @@ class HierarchicalMesh(object):
 
         visibilityButton.clicked.connect(onVisibilityChange)
         self.ui_elements_layout.addWidget(visibilityButton)
+
+    def renderValleyMountainEdgeScalars(self,actor):
+
+        colors, mesh_with_scalars = meshProcessing.valleyMountainEdges(actor.GetMapper().GetInput())
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(mesh_with_scalars)
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        # actor.GetProperty().SetOpacity(0.15)
+        actor.GetProperty().SetLineWidth(10)
+        return actor
+
+    def setAllMeshReferences(self,mesh):
+
+        self.papermesh = mesh
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(self.papermesh)
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetOpacity(0.15)
+
+        self.mesh = actor
+        self.clearUiButtons()
+        self.updateUiButtons(self.mesh)
+
+    def exportTestDataForYun(self, reference_mesh,ratio=1, transpose=0):
+
+        if self.getLevel() == 1:
+
+            bounds = reference_mesh.GetBounds()
+            refernce_height = bounds[5]-bounds[4]
+
+            bounds = self.papermesh.GetBounds()
+            mesh_height = bounds[5]-bounds[4]
+
+            ratio = refernce_height/mesh_height
+
+            if hasattr(self,"meshPieces"):
+                bottom = 0
+                scaledMeshes = []
+                for i, mesh in enumerate(self.meshPieces):
+                    scaledMeshes.append(self.scaleMesh(mesh.GetMapper().GetInput(),ratio))
+                    if bottom > scaledMeshes[i].GetBounds()[4]:
+                        bottom = scaledMeshes[i].GetBounds()[4]
+                    print("bottom: ", bottom)
+
+                for i,mesh in enumerate(scaledMeshes):
+                    transpose = -1 * bottom
+
+                    output = self.transposeMesh(mesh, transpose)
+                    util.writeStl(output, "testdata/normalized" + self.getChildIdx() + "_" + str(i))
+            else:
+                output = self.scaleMesh(self.papermesh,ratio)
+                bottom = output.GetBounds()[4]
+                if bottom < 0:
+                    transpose = -1 * bottom
+                output = self.transposeMesh(output,transpose)
+                util.writeStl(output,"testdata/normalized" + self.getChildIdx())
+
+        elif self.getLevel() > 1:
+
+            if hasattr(self,"meshPieces"):
+                for i,mesh in enumerate(self.meshPieces):
+                    output = self.transposeMesh(self.scaleMesh(mesh.GetMapper().GetInput(),ratio),transpose)
+                    util.writeStl(output, "testdata/normalized" + self.getChildIdx() + "_" + str(i))
+            else:
+                output = self.transposeMesh(self.scaleMesh(self.papermesh,ratio),transpose)
+                util.writeStl(output,"testdata/normalized" + self.getChildIdx())
+
+        for child in self.children:
+            child.exportTestDataForYun(reference_mesh,ratio,transpose)
+
+    def transposeMesh(self,mesh,value):
+
+        transform = vtk.vtkTransform()
+        transform.Translate(0, 0, value)
+        transform.Update()
+
+        transpose = vtk.vtkTransformPolyDataFilter()
+        transpose.SetTransform(transform)
+        transpose.SetInputData(mesh)
+        transpose.Update()
+        return transpose.GetOutput()
+
+    def scaleMesh(self,mesh,factor):
+        com = vtk.vtkCenterOfMass()
+        com.SetInputData(mesh)
+        com.Update()
+        com = com.GetCenter()
+
+        transform = vtk.vtkTransform()
+        #transform.Translate(0, com[1], com[2])
+        transform.Scale(factor, factor, factor)
+        #transform.Translate(0, -com[1], -com[2])
+        transform.Update()
+
+        scale = vtk.vtkTransformPolyDataFilter()
+        scale.SetTransform(transform)
+        scale.SetInputData(mesh)
+        scale.Update()
+        return scale.GetOutput()

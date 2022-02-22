@@ -156,8 +156,14 @@ class Organizer():
         '''
         Adds a new hierarchicalMesh object to the hierarchy.
         '''
+
+        t = time.time()
+
         newHierarchicalMesh = HierarchicalMesh(None,meshes,self.meshProcessor,faces)
         self.hierarchical_mesh_anchor.add(newHierarchicalMesh)
+
+        print("time add to hierarchy", time.time() - t)
+
         return newHierarchicalMesh
 
     def directImportPapermesh(self, mesh):
@@ -257,3 +263,8 @@ class Organizer():
 
     def importUnfolded(self):
         self.hierarchical_mesh_anchor.importAllUnfoldedMeshesInHierarchy()
+
+    def generateStabilityTestData(self):
+        filename = os.path.join(self.dirname,"../out/3D/testdata/normalization_reference.stl")
+        reference = util.readStl(filename)
+        self.hierarchical_mesh_anchor.exportTestDataForYun(reference)

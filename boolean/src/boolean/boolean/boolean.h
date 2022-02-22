@@ -36,7 +36,7 @@ namespace ae {
 
 	private:
 
-		Mesh connectBoundaries(Mesh mesh, K::Vector_3 compareNormal);
+		Mesh connectBoundaries(Mesh mesh, K::Vector_3 compareNormal, float aspectRatioThreshold);
 		std::vector<float> getEdgeLengths(halfedge_descriptor hd, Mesh mesh);
 		float triangleAspectRatio(face_descriptor fd, Mesh mesh);
 		Mesh removeNeedleTriangles(Mesh mesh, float threshold, K::Plane_3 cut_plane);

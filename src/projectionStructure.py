@@ -17,9 +17,26 @@ class ProjectionStructure(object):
 
     def __init__(self,filename,idx):
         self.mesh = util.readStl(filename)
+        #self.register()
         self.idx = idx
         self.filename = filename
         self.initColor()
+
+    def register(self):
+        com = vtk.vtkCenterOfMass()
+        com.SetInputData(self.mesh)
+        com.Update()
+        com = com.GetCenter()
+
+        transform = vtk.vtkTransform()
+        transform.Translate(-com[0], -com[1], -com[2])
+        transform.Update()
+
+        toOrigin = vtk.vtkTransformPolyDataFilter()
+        toOrigin.SetTransform(transform)
+        toOrigin.SetInputData(self.mesh)
+        toOrigin.Update()
+        self.mesh = toOrigin.GetOutput()
 
     def getActor(self):
         if hasattr(self,"actor"):

@@ -3,6 +3,7 @@ from vtkmodules.numpy_interface.dataset_adapter import numpy_support
 import numpy as np
 import os
 import util
+import meshProcessing
 
 dirname = os.path.dirname(__file__)
 uniqueid = 0
@@ -136,13 +137,15 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
         triangle, pointsImg = renderHelper(camera, buffer, bufferPaper, bufferPoints, bufferWin, bufferWinPoints, i, structure)
 
         # --------------
-        #dy, dx, dz = triangle.shape
-        #print(i)
-        #filename = os.path.join(self.dirname, "../out/2D/triangle{}.png".format(i))
-        #util.writeImage(util.NpToVtk(triangle,dx,dy,dz),filename)
+        '''
+        dy, dx, dz = triangle.shape
+        print(i)
+        filename = os.path.join(dirname, "../out/2D/debug/triangle{}.png".format(i))
+        util.writeImage(util.NpToVtk(triangle,dx,dy,dz),filename)
 
-        #filename = os.path.join(self.dirname, "../out/2D/triangle{}_points.png".format(i))
-        #util.writeImage(util.NpToVtk(pointsImg, dx, dy, dz), filename)
+        filename = os.path.join(dirname, "../out/2D/debug/triangle{}_points.png".format(i))
+        util.writeImage(util.NpToVtk(pointsImg, dx, dy, dz), filename)
+        '''
         # ---------------
 
         blue = pointsImg[:, :, 2]
@@ -337,6 +340,7 @@ def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None
     model_actor = vtk.vtkActor()
     model_actor.SetMapper(model_mapper)
     model_actor.GetProperty().SetLineWidth(1)
+
     if drawEdges:
         model_actor.GetProperty().EdgeVisibilityOn()
     model_actor.GetProperty().LightingOff()
@@ -357,13 +361,43 @@ def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None
 
     renderer.AddActor(model_actor)
 
+def render_edges(reader,renderer,colors):
+    extract_edges = vtk.vtkExtractEdges()
+    extract_edges.SetInputData(reader.GetOutput())
+    extract_edges.Update()
+    extracted_edges = extract_edges.GetOutput()
+
+    if colors is None:
+        edges = extracted_edges.GetLines()
+        nr_of_edges = edges.GetNumberOfCells()
+        colors = vtk.vtkUnsignedCharArray()
+        colors.SetNumberOfComponents(3)
+        colors.SetName("Colors")
+        for i in range(nr_of_edges):
+            colors.InsertNextTuple3(0.0,0.0,0.0)
+
+    poly_data = vtk.vtkPolyData()
+    poly_data.SetLines(extracted_edges.GetLines())
+    poly_data.SetPoints(extracted_edges.GetPoints())
+    poly_data.GetCellData().SetScalars(colors)
+    poly_data.Modified()
+
+    model_mapper = vtk.vtkPolyDataMapper()
+    model_mapper.SetInputData(poly_data)
+    model_mapper.Update()
+
+    model_actor = vtk.vtkActor()
+    model_actor.SetMapper(model_mapper)
+    model_actor.GetProperty().SetLineWidth(5)
+    renderer.AddActor(model_actor)
+
 def load_from_obj(path):
     reader = vtk.vtkOBJReader()
     reader.SetFileName(path)
     reader.Update()
     return reader
 
-def label_gt(reader, renderer, scale=0.1, color=None):
+def label_gt(reader, renderer, scale=0.1, color=None, mirror = False):
     if color is None:
         color = [255, 0, 0]
     polydata = reader.GetOutput()
@@ -383,19 +417,37 @@ def label_gt(reader, renderer, scale=0.1, color=None):
         # Set up an actor for the node label
         lblActor = vtk.vtkFollower()
         lblActor.SetMapper(lblMapper)
-        lblActor.SetScale(scale, scale, scale)
+        if mirror:
+            lblActor.SetScale(-scale, scale, scale)
+        else:
+            lblActor.SetScale(scale, scale, scale)
         lblActor.SetPosition(pos[0] - scale / 2,  pos[1] - scale / 2, 0.0)
         lblActor.GetProperty().SetColor(color[0], color[1], color[2])
         lblActor.GetProperty().LightingOff()
         renderer.AddActor(lblActor)
 
 
-def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates):
+def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates,scale,mesh):
     global uniqueid
+    camera = vtk.vtkCamera()
+    camera.ParallelProjectionOn()
+    #TODO some >1 factor to scale
+    camera.SetParallelScale(scale*0.9)
+    print("scale: ",scale*0.9)
+
+    model = util.readObj(unfoldedModel)
+    com = vtk.vtkCenterOfMass()
+    com.SetInputData(model)
+    com.Update()
+    center = com.GetCenter()
+    camera.SetPosition(center[0], center[1], -1)
+    camera.SetFocalPoint(center[0], center[1], center[2])
+
     ren = vtk.vtkRenderer()
     ren.SetBackground(255.0, 255.0, 255.0)
+    ren.SetActiveCamera(camera)
     renWin = vtk.vtkRenderWindow()
-    renWin.SetSize(6000, 6000)
+    renWin.SetSize(10000, 10000)
     renWin.AddRenderer(ren)
     wti = vtk.vtkWindowToImageFilter()
     wti.SetInput(renWin)
@@ -405,6 +457,7 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     renWin.SetOffScreenRendering(1)
 
     model_reader = load_from_obj(unfoldedModel)
+    render_edges(model_reader, ren, None)
     render_triangle_obj(model_reader, ren, idx=idx, texCoordinates=textureCoordinates)
 
     gt_reader = load_from_obj(labels)
@@ -427,9 +480,15 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     wti.SetInputBufferTypeToRGB()
     wti.ReadFrontBufferOff()
 
-    mirror_gt_reader = load_from_obj(mirroredLabels)
-    render_triangle_obj(mirror_gt_reader, ren, color=[50, 50, 50], drawEdges=True)
-    label_gt(mirror_gt_reader, ren, 2, [255, 0, 0])
+    #mirror_gt_reader = load_from_obj(mirroredLabels)
+    #render_triangle_obj(mirror_gt_reader, ren, color=[50, 50, 50], drawEdges=True)
+    #label_gt(mirror_gt_reader, ren, 1.5, [255, 0, 0])
+    cleaned_mesh, correspondance_list = util.getMapFromUncleanedToCleaned(mesh)
+    colors, colored_poly = meshProcessing.valleyMountainEdges(mesh)
+    colors = util.stretchColorScalarArray(colors,correspondance_list)
+    render_edges(model_reader,ren,None)
+    render_edges(model_reader,ren,colors)
+
 
     renWin.Render()
     wti.Update()
@@ -442,7 +501,7 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     ren.RemoveAllViewProps()
     ren.SetBackground(0.0,0.0,0.0)
     render_triangle_obj(gt_reader, ren, color=[0.0, 0.0, 0.0])
-    label_gt(gt_reader, ren, 3, [0.0, 0.33, 0.33])
+    label_gt(gt_reader, ren, 1.5, [0.0, 0.33, 0.33], mirror = True)
     renWin.Render()
     wti = vtk.vtkWindowToImageFilter()
     wti.SetInput(renWin)
