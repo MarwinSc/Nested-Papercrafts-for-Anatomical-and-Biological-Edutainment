@@ -215,8 +215,8 @@ class Organizer():
         self.hierarchical_mesh_anchor.unfoldWholeHierarchy(iterations)
 
 
-    def project(self,resolution=[500,500]):
-        self.hierarchical_mesh_anchor.project(resolution)
+    def project(self,resolution=[500,500],subdivisions = 0):
+        self.hierarchical_mesh_anchor.project(resolution, subdivisions=subdivisions)
 
     def clearOutputDirectory(self):
         '''

@@ -88,10 +88,16 @@ namespace ae{
 		}
 		input.close();
 
-		// In this example, the simplification stops when the number of undirected edges
-		// drops below 10% of the initial count
-		SMS::Count_stop_predicate<Mesh> stop(stop_ratio);
-		int r = SMS::edge_collapse(mesh, stop);
+		
+		if (stop_ratio <= 1.0) {
+			SMS::Count_ratio_stop_predicate<Mesh> stop(stop_ratio);
+			int r = SMS::edge_collapse(mesh, stop);
+		}
+		else {
+			//stop_ratio equals the number of edges in the resulting mesh
+			SMS::Count_stop_predicate<Mesh> stop(stop_ratio);
+			int r = SMS::edge_collapse(mesh, stop);
+		}
 
 		mesh.collect_garbage();
 		std::ofstream output("../out/3D/simplified.off");

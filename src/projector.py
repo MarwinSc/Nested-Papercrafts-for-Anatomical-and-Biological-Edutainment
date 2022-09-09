@@ -4,6 +4,7 @@ import numpy as np
 import os
 import util
 import meshProcessing
+import projectionStructure
 
 dirname = os.path.dirname(__file__)
 uniqueid = 0
@@ -43,8 +44,12 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
     camera = vtk.vtkCamera()
     #        camera.SetViewUp(0, 1, 0)
     camera.ParallelProjectionOn()
-    camera.Zoom(0.01)
-    camera.SetClippingRange(0.0001, 300.01)
+
+    #camera.Zoom(0.2)
+    if structure.projectionMethod == structure.ProjectionMethod.Clipping:
+        camera.SetClippingRange(0.0001, 200.01)
+    else:
+        camera.SetClippingRange(0.0001, 200.01)
 
     depthPeeling = True
     occlusion = 0.1
@@ -119,9 +124,14 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
         #+0.01 because of the lighting, which renders everything white if viewed parallel to the z-axis
         position = [p[0]+0.01 + (p2[0] * normalScale), p[1]+0.01 + (p2[1] * normalScale), p[2]+0.01 + (p2[2] * normalScale)]
 
+        #draw points marking the corners of a triangle
+        points = paper.GetCell(i).GetPoints()
+        bufferPoints.RemoveAllViewProps()
+        drawPoints(points,bufferPoints)
+
         camera.SetPosition(position)
         camera.SetFocalPoint(p)
-        points = paper.GetCell(i).GetPoints()
+        largestDistanceBetweenPoints = util.getLargestDistanceBetweenPoints(points)
 
         mapper = vtk.vtkPolyDataMapper()
         mapper.SetInputData(paper)
@@ -129,12 +139,8 @@ def projectPerTriangle(dedicatedPaperMesh, structure ,meshNr = 0, resolution = [
         actor.SetMapper(mapper)
         bufferPaper.AddActor(actor)
 
-        bufferPoints.RemoveAllViewProps()
-
-        drawPoints(points,bufferPoints)
-
         # render frame
-        triangle, pointsImg = renderHelper(camera, buffer, bufferPaper, bufferPoints, bufferWin, bufferWinPoints, i, structure)
+        triangle, pointsImg = renderHelper(camera, buffer, bufferPaper, bufferPoints, bufferWin, bufferWinPoints, i, structure.getActor(), largestDistanceBetweenPoints)
 
         # --------------
         '''
@@ -266,29 +272,42 @@ def drawPoints(points,bufferPoints):
     pointActor.GetProperty().SetPointSize(2)
     bufferPoints.AddActor(pointActor)
 
-def renderHelper(camera, buffer, bufferPaper, bufferPoints, bufferWin, bufferWinPoints, count, actor):
-    ##Was necessary at some stage of programming, could be removed later on.
-    buffer.AddActor(actor)
+##Was necessary at some stage of programming, could be removed later on.
+def renderHelper(camera, buffer, bufferPaper, bufferPoints, bufferWin, bufferWinPoints, count, actor, parallelscale):
 
-    buffer.SetActiveCamera(camera)
-    bufferPaper.SetActiveCamera(camera)
-    bufferPoints.SetActiveCamera(camera)
+    success = False
+    while not success:
+        parallelscale = parallelscale
+        camera.SetParallelScale(parallelscale)
 
-    bufferWin.Render()
+        buffer.AddActor(actor)
 
-    wti = vtk.vtkWindowToImageFilter()
-    wti.SetInput(bufferWin)
-    wti.SetInputBufferTypeToRGB()
-    wti.Update()
+        buffer.SetActiveCamera(camera)
+        bufferPaper.SetActiveCamera(camera)
+        bufferPoints.SetActiveCamera(camera)
 
-    bufferWinPoints.Render()
+        bufferWin.Render()
 
-    wti2 = vtk.vtkWindowToImageFilter()
-    wti2.SetInput(bufferWinPoints)
-    wti2.SetInputBufferTypeToRGB()
-    wti2.Update()
+        wti = vtk.vtkWindowToImageFilter()
+        wti.SetInput(bufferWin)
+        wti.SetInputBufferTypeToRGB()
+        wti.Update()
 
-    triangleImg, pointsImg = cropRenderedTriangle(wti.GetOutput(), wti2.GetOutput(), bufferWin.GetSize(), count)
+        bufferWinPoints.Render()
+
+        wti2 = vtk.vtkWindowToImageFilter()
+        wti2.SetInput(bufferWinPoints)
+        wti2.SetInputBufferTypeToRGB()
+        wti2.Update()
+
+        #debug
+        filename = os.path.join(dirname, "../out/2D/debug/triangle{}.png".format(count))
+        util.writeImage(wti2.GetOutput(), filename)
+
+        success, triangleImg, pointsImg = cropRenderedTriangle(wti.GetOutput(), wti2.GetOutput(), bufferWin.GetSize(), count)
+        parallelscale = parallelscale * 2
+        if parallelscale > 1000:
+            raise Exception("Can't find all triangle corners. Likely the triangle was too tiny.")
 
     return triangleImg, pointsImg
 
@@ -316,6 +335,11 @@ def cropRenderedTriangle(image, pointsImage, resolution, count = 1):
     maskBlue = np.logical_and(np.logical_and(blue > 250, red < 50), green < 50)
     maskRed = np.logical_and(np.logical_and(red > 250, blue < 50), green < 50)
     maskGreen = np.logical_and(np.logical_and(green > 250, red < 50), blue < 50)
+
+    success = np.any(maskRed) and np.any(maskGreen) and np.any(maskBlue)
+    if not success:
+        print("Couldn't find all points of the projected triangle, ID: {}".format(count))
+
     mask = np.where((maskBlue+maskGreen+maskRed))
 
     if len(mask[0]) > 0 and len(mask[1]) > 0:
@@ -327,16 +351,23 @@ def cropRenderedTriangle(image, pointsImage, resolution, count = 1):
         result = np.array(result)
         pointsResult = result
 
-    return result, pointsResult
+    return success, result, pointsResult
 
-def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None, rotation=None, drawEdges = False):
+def render_triangle_obj(reader, renderer, idx=0, texCoordinates=None, color=None, rotation=None, drawEdges = False, subdivisions = 0):
     if rotation is None:
         rotation = [0.0, 0.0, 0.0, 0.0]
     if color is None:
         color = [0.1, 0.1, 0.1]
 
+    #--------------
+    subdivider = vtk.vtkLinearSubdivisionFilter()
+    subdivider.SetNumberOfSubdivisions(subdivisions)
+    subdivider.SetInputConnection(reader.GetOutputPort())
+    subdivider.Update()
+    #--------------
+
     model_mapper = vtk.vtkPolyDataMapper()
-    model_mapper.SetInputConnection(reader.GetOutputPort())
+    model_mapper.SetInputConnection(subdivider.GetOutputPort())
     model_actor = vtk.vtkActor()
     model_actor.SetMapper(model_mapper)
     model_actor.GetProperty().SetLineWidth(1)
@@ -427,7 +458,7 @@ def label_gt(reader, renderer, scale=0.1, color=None, mirror = False):
         renderer.AddActor(lblActor)
 
 
-def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates,scale,mesh):
+def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordinates,scale,mesh,subdivisions = 0):
     global uniqueid
     camera = vtk.vtkCamera()
     camera.ParallelProjectionOn()
@@ -458,7 +489,7 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
 
     model_reader = load_from_obj(unfoldedModel)
     render_edges(model_reader, ren, None)
-    render_triangle_obj(model_reader, ren, idx=idx, texCoordinates=textureCoordinates)
+    render_triangle_obj(model_reader, ren, idx=idx, texCoordinates=textureCoordinates, subdivisions=subdivisions)
 
     gt_reader = load_from_obj(labels)
     render_triangle_obj(gt_reader, ren, color=[50, 50, 50], drawEdges=True)
@@ -480,9 +511,10 @@ def renderFinalOutput(unfoldedModel, labels, mirroredLabels, idx, textureCoordin
     wti.SetInputBufferTypeToRGB()
     wti.ReadFrontBufferOff()
 
-    #mirror_gt_reader = load_from_obj(mirroredLabels)
-    #render_triangle_obj(mirror_gt_reader, ren, color=[50, 50, 50], drawEdges=True)
-    #label_gt(mirror_gt_reader, ren, 1.5, [255, 0, 0])
+    mirror_gt_reader = load_from_obj(mirroredLabels)
+    render_triangle_obj(mirror_gt_reader, ren, color=[50, 50, 50], drawEdges=True)
+    label_gt(mirror_gt_reader, ren, 1.5, [255, 0, 0])
+
     cleaned_mesh, correspondance_list = util.getMapFromUncleanedToCleaned(mesh)
     colors, colored_poly = meshProcessing.valleyMountainEdges(mesh)
     colors = util.stretchColorScalarArray(colors,correspondance_list)
@@ -521,7 +553,7 @@ def createUnfoldedPaperMesh(dedicatedPaperMesh, originalPaperMesh, labelMesh, id
     :param idx: number for the filename.
     :return: a vtk image
     '''
-    mesh = originalPaperMesh.GetMapper().GetInput()
+    mesh = originalPaperMesh
 
     textureCoordinates = mesh.GetPointData().GetTCoords()
 

@@ -1,5 +1,6 @@
 import os
 import trimesh
+import numpy as np
 from mim.mim import meshB_inside_meshA
 import vtkmodules.all as vtk
 import util
@@ -174,8 +175,9 @@ class HierarchicalMesh(object):
 
             try:
                 self.boolThenCut(convexHull_cutout)
-                for child in self.children:
-                    child.scalePaperMeshDown(0.96)
+                #TODO
+                #for child in self.children:
+                    #child.scalePaperMeshDown(0.98)
 
             except Exception:
                 raise Exception("Failure on Cut")
@@ -191,6 +193,7 @@ class HierarchicalMesh(object):
         for child in self.children:
             child.recursive_difference(convexHull_cutout)
 
+    #TODO clean up method
     def boolThenCut(self, convexCutout = False, inner_meshes_intersecting = False):
         '''
         First calculates the difference with the inner mesh, then cuts the given papermesh open and uses boolean.cpp methods to mesh the resulting two boundary loops.
@@ -212,7 +215,7 @@ class HierarchicalMesh(object):
                 filename = os.path.join(self.dirname, "../out/3D/hull.stl")
                 outPath = os.path.join(self.dirname, "../out/3D/hull.off")
                 util.meshioIO(filename,outPath)
-                boolean_interface.Boolean_Interface().simplify(outPath, 0.5)
+                boolean_interface.Boolean_Interface().simplify(outPath, 0.9)
                 inPath = os.path.join(self.dirname, "../out/3D/simplified.off")
                 util.meshioIO(inPath,filename)
 
@@ -281,7 +284,7 @@ class HierarchicalMesh(object):
             paths.append(outPath)
             paths2.append(inPath)
 
-            min, max, avg = self.meshProcessor.getAverageEdgeLength(meshPieces[i])
+            min, max, avg = meshProcessing.getAverageEdgeLength(meshPieces[i])
             minDistance.append(min)
             avgDistance.append(avg)
 
@@ -361,7 +364,7 @@ class HierarchicalMesh(object):
 
                 outPath = os.path.join(self.dirname, "../out/3D/pre_approximate.off")
                 util.meshioIO(filename,outPath)
-                boolean_interface.Boolean_Interface().simplify(outPath, 0.7)
+                boolean_interface.Boolean_Interface().simplify(outPath, 0.9)
                 inPath = os.path.join(self.dirname, "../out/3D/simplified.off")
                 outPath = filename
                 util.meshioIO(inPath,outPath)
@@ -530,6 +533,10 @@ class HierarchicalMesh(object):
         number_of_faces = (3/2)*(x+2)
         boolean_interface.Boolean_Interface().simplify(outPath,number_of_faces)
 
+        #threshold = 0.00032*x-0.00039
+        # 0.017 -> about 52, 0.012 -> ca 40 faces in the resulting mesh
+        #boolean_interface.Boolean_Interface().simplify(outPath,threshold)
+
         outPath = os.path.join(self.dirname, "../out/3D/simplified.stl")
         inPath = os.path.join(self.dirname, "../out/3D/simplified.off")
         util.meshioIO(inPath,outPath)
@@ -641,7 +648,7 @@ class HierarchicalMesh(object):
                 unfoldedString += "Not Unfolded, "
         self.label.setText(unfoldedString)
 
-    def project(self, resolution, scale = 1):
+    def project(self, resolution, scale = 1, subdivisions = 0):
         '''
         Projects all anatomical structures of the hierarchy onto their respective unfolded papermesh.
         Creating the unfolded paper template for each papermesh.
@@ -655,7 +662,7 @@ class HierarchicalMesh(object):
             # creating unfoldings per mesh piece
             if hasattr(self, "meshPieces"):
                 for j, unfolded_piece in enumerate(self.unfoldedActors):
-                    unfolded_piece = self.project_helper(unfolded_piece, resolution, self.getChildIdx()+"_"+str(j),scale ,j)
+                    unfolded_piece = self.project_helper(unfolded_piece, resolution, self.getChildIdx()+"_"+str(j),scale ,j, subdivisions = subdivisions)
                     self.updateUiButtons(unfolded_piece)
                     print("Projected a hierarchy level.")
 
@@ -664,15 +671,15 @@ class HierarchicalMesh(object):
 
             # create single unfolding if mesh isn't cut
             else:
-                self.unfoldedActor = self.project_helper(self.unfoldedActor, resolution, self.getChildIdx(),scale)
+                self.unfoldedActor = self.project_helper(self.unfoldedActor, resolution, self.getChildIdx(),scale, subdivisions = subdivisions)
                 self.updateUiButtons(self.unfoldedActor)
                 print("Projected a hierarchy level.")
 
         self.getChildIdx()
         for child in self.children:
-            child.project(resolution, scale)
+            child.project(resolution, scale, subdivisions)
 
-    def project_helper(self, actor, resolution, textureIdx, scale, j=-1):
+    def project_helper(self, actor, resolution, textureIdx, scale, j=-1, subdivisions = 0):
         '''
         Helper for projectMethod for either pieces of a cut mesh or an uncut papermesh.
         Handels calling the necessary methods for projection with a given actor and the meshes of the current hierarchical level.
@@ -680,26 +687,34 @@ class HierarchicalMesh(object):
         for i, mesh in enumerate(self.meshes):
             # if the papermesh is complete
             if j < 0:
-                dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
-                projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), textureIdx + "_" + str(i), resolution)
+                dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor,subdivisions=subdivisions)
+                projection = projector.projectPerTriangle(dedicatedMesh, mesh, textureIdx + "_" + str(i), resolution)
+
                 # createUnfoldedPaperMesh is deprecated but still used for the previewTexture
-                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetab, textureIdx  + "_" + str(i))
+                temp = actor.GetMapper().GetInput()
+                temp = util.subdivideMesh(temp,subdivisions)
+                util.writeObj(temp,"subdividedPaperMesh")
+                img, previewTexture = projector.createUnfoldedPaperMesh(projection, temp, self.gluetab, textureIdx  + "_" + str(i))
             # if there are multiple pieces
             else:
                 mesh.cutMesh = self.meshProcessor.clipStructure(mesh.mesh,self.cutPlane,j)
-                map_innerMesh_to_cutPlane = self.create_projection_dictionary_for_cutout()
-                dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor, hull = self.cut_boundingBox(actor.GetMapper().GetInput(),j), map = map_innerMesh_to_cutPlane)
+                map_innerMesh_to_cutPlane = self.create_projection_dictionary_for_cutout(mesh.mesh)
+                dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor, hull = self.cut_boundingBox(actor.GetMapper().GetInput(),j), map = map_innerMesh_to_cutPlane, subdivisions=subdivisions)
                 #dedicatedMesh = self.meshProcessor.createDedicatedMesh(mesh, actor)
-                projection = projector.projectPerTriangle(dedicatedMesh, mesh.getActor(), textureIdx + "_" + str(i), resolution)
+                projection = projector.projectPerTriangle(dedicatedMesh, mesh, textureIdx + "_" + str(i), resolution)
+
                 # createUnfoldedPaperMesh is deprecated but still used for the previewTexture
-                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor, self.gluetabs[j], textureIdx + "_" + str(i))
+                temp = actor.GetMapper().GetInput()
+                temp = util.subdivideMesh(temp,subdivisions)
+                util.writeObj(temp,"subdividedPaperMesh")
+                img, previewTexture = projector.createUnfoldedPaperMesh(projection, actor.GetMapper().GetInput(), self.gluetabs[j], textureIdx + "_" + str(i))
 
             if j < 0:
                 front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFile, self.gluetabFile, self.mirrorgtFile, textureIdx + "_" + str(i),
-                                            projection.GetMapper().GetInput().GetPointData().GetTCoords(),scale,actor.GetMapper().GetInput())
+                                            projection.GetMapper().GetInput().GetPointData().GetTCoords(),scale,actor.GetMapper().GetInput(),subdivisions=subdivisions)
             else:
                 front_output, back_output, labelIDs_output = projector.renderFinalOutput(self.modelFiles[j], self.gluetabFiles[j], self.mirrorgtFiles[j], textureIdx + "_" + str(i),
-                                            projection.GetMapper().GetInput().GetPointData().GetTCoords(),scale,actor.GetMapper().GetInput())
+                                            projection.GetMapper().GetInput().GetPointData().GetTCoords(),scale,actor.GetMapper().GetInput(), subdivisions=subdivisions)
 
             previewTexture = projector.mask(util.VtkToNp(previewTexture))
             front_output = util.VtkToNp(front_output)
@@ -768,13 +783,18 @@ class HierarchicalMesh(object):
         filledMesh.GetPoints().GetData().Modified()
         return filledMesh
 
-    def create_projection_dictionary_for_cutout(self):
+    def create_projection_dictionary_for_cutout(self, mesh):
         '''
         creates a dictionary that has the vertex positions of the inner mesh as key, and the projected position onto the cut plane as value.
         '''
         dictionary = {}
         newGeometry = vtk.vtkPolyData()
         newPoints = vtk.vtkPoints()
+
+        for i in range(mesh.GetPoints().GetNumberOfPoints()):
+            p = mesh.GetPoints().GetPoint(i)
+            if self.cutPlane.DistanceToPlane(p) < 0.005:
+                dictionary[p] = p
 
         for child in self.children:
             if hasattr(child, "meshPieces"):
@@ -1047,9 +1067,13 @@ class HierarchicalMesh(object):
 
                     plane.SetOrigin(x0, y0, z0)
                     try:
-                        plane.SetNormal(viewpoints[idx][0], viewpoints[idx][1],viewpoints[idx][2])
+                        normal = np.array([viewpoints[idx][0], viewpoints[idx][1],viewpoints[idx][2]])
+                        normal = normal / np.sqrt(np.sum(normal**2))
+                        plane.SetNormal(normal.tolist())
                     except:
-                        plane.SetNormal(viewpoints[idx-1][0], viewpoints[idx-1][1], viewpoints[idx-1][2])
+                        normal = np.array([viewpoints[idx-1][0], viewpoints[idx-1][1], viewpoints[idx-1][2]])
+                        normal = normal / np.sqrt(np.sum(normal**2))
+                        plane.SetNormal(normal.tolist())
                     self.cutPlane = plane
 
         for child in self.children:
@@ -1092,7 +1116,7 @@ class HierarchicalMesh(object):
             self.updateUiButtons(self.mesh)
 
             for child in self.children:
-                child.scalePaperMeshDown(0.96)
+                child.scalePaperMeshDown(0.98)
 
     def setUpAdditionalUiElements(self):
         '''

@@ -212,15 +212,20 @@ class Ui_MainWindow(object):
         resolutionWidth = QtWidgets.QLineEdit()
         resolutionWidth.setText("2000")
 
+        subdivisionsForProjectionText = QtWidgets.QLineEdit()
+        subdivisionsForProjectionText.setText("0")
+
         def onProjectPerTriangle():
 
             t = time.time()
 
             try:
                 width = int(resolutionWidth.text())
+                subdivisions = int(subdivisionsForProjectionText.text())
             except:
                 width = 500
-            org.project(resolution = [width, width])
+                subdivisions = 0
+            org.project(resolution=[width, width], subdivisions=subdivisions)
 
             print("time projection", time.time() - t)
 
@@ -455,6 +460,7 @@ class Ui_MainWindow(object):
 
         projectionLayout.addWidget(projectPerTriangle)
         projectionLayout.addWidget(resolutionWidth)
+        projectionLayout.addWidget(subdivisionsForProjectionText)
 
         paperCreationLayout.addWidget(cuttingBox)
         paperCreationLayout.addWidget(unfoldingBox)

@@ -75,7 +75,7 @@ class MeshProcessing():
             return actor
 
 
-    def createDedicatedMesh(self,mesh,unfolded,hull = None, map = None):
+    def createDedicatedMesh(self,mesh,unfolded,hull = None, map = None, subdivisions = 0):
         '''
         Creates a dedicated paper mesh to project a given mesh onto it
         :param mesh: the anatomical structure
@@ -84,23 +84,34 @@ class MeshProcessing():
         :return:
         '''
 
+        unfolded = unfolded.GetMapper().GetInput()
+
+        unfolded = util.subdivideMesh(unfolded,subdivisions)
+
         if mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Inflate:
             if hull is not None:
                 util.writeStl(mesh.cutMesh, "cutStructure")
-                mesh = util.smoothMesh(unfolded.GetMapper().GetInput(), util.offsetMesh(mesh.cutMesh,2.0), iterations=1, relaxation=0.001)
-                util.writeStl(unfolded.GetMapper().GetInput(), "dedicatedMesh_before")
+                mesh = util.smoothMesh(unfolded, util.offsetMesh(mesh.cutMesh,2.0), iterations=1, relaxation=0.001)
+                util.writeStl(unfolded, "dedicatedMesh_before")
+
+                mesh = util.smoothMesh(mesh, iterations=20, relaxation=0.01)
             else:
-                mesh = util.smoothMesh(unfolded.GetMapper().GetInput(), mesh.mesh , iterations=15, relaxation=0.1)
+                mesh = util.smoothMesh(unfolded, mesh.mesh, iterations=15, relaxation=0.1)
+                mesh = util.smoothMesh(mesh, iterations=20, relaxation=0.01)
+
             poly = mesh
 
         elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Cube:
-            util.writeStl(unfolded.GetMapper().GetInput(),"beforeCubeDedicated")
+            #unfolded = util.smoothMesh(unfolded, mesh.mesh, iterations=15, relaxation=0.1)
+            util.writeStl(unfolded,"beforeCubeDedicated")
             if hull is not None: util.writeStl(hull,"cut_hull")
-            poly = util.projectMeshToBoundsAlongCubeNormals(unfolded.GetMapper().GetInput(), hull=hull, map = map)
+            poly = util.projectMeshToBoundsAlongCubeNormals(unfolded, hull=hull, map = map)
 
 
         elif mesh.projectionMethod == ProjectionStructure.ProjectionMethod.Clipping:
-            mesh = util.cleanMesh(unfolded.GetMapper().GetInput())
+            mesh = util.cleanMesh(unfolded)
+            mesh = util.smoothMesh(mesh, iterations=20, relaxation=0.01)
+
             poly = mesh
 
         util.writeStl(poly, "dedicatedMesh{}".format(self.ii))
@@ -283,35 +294,6 @@ class MeshProcessing():
                 inPath = os.path.join(self.dirname,"difference.off")
                 outPath = os.path.join(self.dirname,"../out/3D/objTestCuts/BooledPapermeshCuts/booledPapermeshPiece{}".format(i)+"_rotated.obj")
                 util.meshioIO(inPath,outPath)
-
-    def getAverageEdgeLength(self, polydata):
-
-        polydata = util.cleanMesh(polydata)
-
-        averageDistance = 0
-        numberOfEdges = 0
-        maxDistance = 0
-        minDistance = 10000
-
-        extractEdges = vtk.vtkExtractEdges()
-        extractEdges.SetInputData(polydata)
-        extractEdges.Update()
-        lines = extractEdges.GetOutput()
-
-        for i in range(lines.GetNumberOfCells()):
-            p0 = lines.GetCell(i).GetPoints().GetPoint(0)
-            p1 = lines.GetCell(i).GetPoints().GetPoint(1)
-            distSquared = vtkMath.Distance2BetweenPoints(p0, p1)
-            averageDistance = (averageDistance + distSquared)
-            numberOfEdges += 1
-            if distSquared > maxDistance: maxDistance = distSquared
-            if distSquared < minDistance: minDistance = distSquared
-
-        averageDistance = averageDistance/lines.GetNumberOfCells()
-
-        #print("Min: {} Max: {} Avg: {}".format(minDistance,maxDistance,averageDistance))
-
-        return minDistance, maxDistance, averageDistance
 
     def clipStructure(self, poly, plane, i):
 
@@ -527,9 +509,9 @@ def valleyMountainEdges(poly):
 
             dotproduct = vtk.vtkMath.Dot((normal[0],normal[1],normal[2]),(vector[0],vector[1],vector[2]))
             #modified sign
-            if dotproduct > 0.05:
+            if dotproduct > 0.0005:
                 dotproduct = 1.0
-            elif dotproduct < -0.05:
+            elif dotproduct < -0.0005:
                 dotproduct = -1.0
             else:
                 dotproduct = 0.0
@@ -551,3 +533,30 @@ def valleyMountainEdges(poly):
 
     return Colors, poly_data#, pointIds_scalar_map
 
+
+def getAverageEdgeLength(polydata):
+
+    polydata = util.cleanMesh(polydata)
+
+    averageDistance = 0
+    maxDistance = 0
+    minDistance = 10000
+
+    extractEdges = vtk.vtkExtractEdges()
+    extractEdges.SetInputData(polydata)
+    extractEdges.Update()
+    lines = extractEdges.GetOutput()
+
+    for i in range(lines.GetNumberOfCells()):
+        p0 = lines.GetCell(i).GetPoints().GetPoint(0)
+        p1 = lines.GetCell(i).GetPoints().GetPoint(1)
+        distSquared = vtkMath.Distance2BetweenPoints(p0, p1)
+        averageDistance = (averageDistance + distSquared)
+        if distSquared > maxDistance: maxDistance = distSquared
+        if distSquared < minDistance: minDistance = distSquared
+
+    averageDistance = averageDistance/lines.GetNumberOfCells()
+
+    #print("Min: {} Max: {} Avg: {}".format(minDistance,maxDistance,averageDistance))
+
+    return minDistance, maxDistance, averageDistance
