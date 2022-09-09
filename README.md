@@ -13,8 +13,7 @@ In this paper, we present a new workflow for the computer-aided generation of ph
 
 ### Important Note
 
-The codes developed for the paper can be found [here](https://github.com/MarwinSc/Nested-Papercrafts-for-Anatomical-and-Biological-Edutainment), 
-refactored version of the code will be available in this repository as soon as possible.
+The codes developed for the paper are a work in progress, and a refactored version of the code will be available in this repository as soon as possible.
 
 ### How to use?
 
